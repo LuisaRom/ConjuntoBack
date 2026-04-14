@@ -21,6 +21,11 @@ public class MascotaController {
         return mascotaService.obtenerTodos();
     }
 
+    @GetMapping("/todas")
+    public List<Mascota> obtenerTodas() {
+        return mascotaService.obtenerTodos();
+    }
+
     @GetMapping("/{id}")
     public Optional<Mascota> obtenerPorId(@PathVariable Long id) {
         return mascotaService.obtenerPorId(id);

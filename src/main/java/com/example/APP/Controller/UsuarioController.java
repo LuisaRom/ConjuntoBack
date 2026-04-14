@@ -2,14 +2,13 @@ package com.example.APP.Controller;
 
 import com.example.APP.DTO.LoginRequest;
 import com.example.APP.Model.Usuario;
-import com.example.APP.Repository.UsuarioRepository;
 import com.example.APP.Service.UsuarioService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -36,6 +35,16 @@ public class UsuarioController {
     @PostMapping
     public Usuario guardar(@RequestBody Usuario usuario) {
         return usuarioService.guardar(usuario);
+    }
+    
+    @PostMapping("/crear")
+    public ResponseEntity<?> crear(@RequestBody Map<String, Object> payload) {
+        try {
+            Usuario creado = usuarioService.crearUsuario(payload);
+            return ResponseEntity.status(HttpStatus.CREATED).body(creado);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @DeleteMapping("/{id}")

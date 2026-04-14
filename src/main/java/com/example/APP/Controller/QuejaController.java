@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -21,6 +22,13 @@ public class QuejaController {
     public List<Queja> obtenerTodos() {
         return quejaService.obtenerTodos();
     }
+    
+    @GetMapping("/todas")
+    public Map<String, List<Queja>> obtenerTodasAgrupadasPorCategoria(
+            @RequestParam(name = "categoria", required = false) String categoria
+    ) {
+        return quejaService.obtenerTodasAgrupadasPorCategoria(categoria);
+    }
 
     @GetMapping("/{id}")
     public Optional<Queja> obtenerPorId(@PathVariable Long id) {
@@ -30,6 +38,16 @@ public class QuejaController {
     @PostMapping
     public Queja guardar(@RequestBody Queja queja) {
         return quejaService.guardar(queja);
+    }
+    
+    @PutMapping("/{id}/en-proceso")
+    public Queja enProceso(@PathVariable Long id) {
+        return quejaService.enProceso(id);
+    }
+    
+    @PutMapping("/{id}/finalizar")
+    public Queja finalizar(@PathVariable Long id) {
+        return quejaService.finalizar(id);
     }
 
     @DeleteMapping("/{id}")

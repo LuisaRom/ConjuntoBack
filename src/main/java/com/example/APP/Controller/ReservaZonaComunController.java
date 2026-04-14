@@ -7,9 +7,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.BeanWrapperImpl;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -31,13 +35,15 @@ public class ReservaZonaComunController {
     }
 
     @GetMapping("/todas")
-    public List<ReservaZonaComun> obtenerTodasParaAdmin() {
+    public List<Map<String, Object>> obtenerTodasParaCelador() {
         return reservaZonaComunService.obtenerTodos().stream()
                 .filter(this::esDeResidente)
+                .filter(this::esReservaActiva)
                 .filter(reserva -> {
                     String zona = leerComoTexto(reserva, "zonaComun");
                     return zona != null && TIPOS_RESERVA_ADMIN.contains(zona.trim().toLowerCase());
                 })
+                .map(this::mapearReservaConTipo)
                 .collect(Collectors.toList());
     }
 
@@ -60,6 +66,58 @@ public class ReservaZonaComunController {
         }
         Object valor = wrapper.getPropertyValue(propiedad);
         return valor != null ? valor.toString() : null;
+    }
+    
+    private boolean esReservaActiva(ReservaZonaComun reserva) {
+        BeanWrapperImpl bean = new BeanWrapperImpl(reserva);
+        LocalDate hoy = LocalDate.now();
+        LocalTime ahora = LocalTime.now();
+        
+        LocalDate fechaReserva = null;
+        if (bean.isReadableProperty("fechaReserva")) {
+            Object fechaObj = bean.getPropertyValue("fechaReserva");
+            if (fechaObj instanceof LocalDate fecha) {
+                fechaReserva = fecha;
+            }
+        }
+        if (fechaReserva == null) {
+            return false;
+        }
+        if (fechaReserva.isAfter(hoy)) {
+            return true;
+        }
+        if (fechaReserva.isBefore(hoy)) {
+            return false;
+        }
+        
+        if (bean.isReadableProperty("horaFin")) {
+            Object horaFinObj = bean.getPropertyValue("horaFin");
+            if (horaFinObj instanceof LocalTime horaFin) {
+                return !horaFin.isBefore(ahora);
+            }
+        }
+        return true;
+    }
+    
+    private Map<String, Object> mapearReservaConTipo(ReservaZonaComun reserva) {
+        BeanWrapperImpl bean = new BeanWrapperImpl(reserva);
+        Map<String, Object> item = new LinkedHashMap<>();
+        
+        String zona = leerComoTexto(reserva, "zonaComun");
+        String tipo = zona != null ? zona.trim().toLowerCase() : null;
+        
+        item.put("id", leerPropiedad(bean, "id"));
+        item.put("tipo", tipo);
+        item.put("zonaComun", zona);
+        item.put("fechaReserva", leerPropiedad(bean, "fechaReserva"));
+        item.put("horaInicio", leerPropiedad(bean, "horaInicio"));
+        item.put("horaFin", leerPropiedad(bean, "horaFin"));
+        item.put("usuario", leerPropiedad(bean, "usuario"));
+        return item;
+    }
+    
+    private Object leerPropiedad(BeanWrapperImpl bean, String propiedad) {
+        return bean.isReadableProperty(propiedad) ? bean.getPropertyValue(propiedad) : null;
     }
 
     @GetMapping("/{id}")
