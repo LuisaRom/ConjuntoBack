@@ -15,6 +15,9 @@ public class Queja{
     private Long id;
 
     private String descripcion;
+    private String tipoQueja;
+    private String torre;
+    private String apartamento;
     private LocalDateTime fechaCreacion;
 
     @Enumerated(EnumType.STRING)

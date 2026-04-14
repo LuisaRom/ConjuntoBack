@@ -17,6 +17,7 @@ public class AccesoVehicular {
     private String placaVehiculo;
     private String torre;
     private String apartamento;
+    private String codigoQr;
 
     @ManyToOne
     @JoinColumn(name = "visitante_id")

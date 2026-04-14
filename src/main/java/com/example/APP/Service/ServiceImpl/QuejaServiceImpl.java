@@ -4,6 +4,7 @@ import com.example.APP.Model.Notificacion;
 import com.example.APP.Model.Queja;
 import com.example.APP.Model.Usuario;
 import com.example.APP.Repository.QuejaRepository;
+import com.example.APP.Repository.UsuarioRepository;
 import com.example.APP.Service.NotificacionService;
 import com.example.APP.Service.QuejaService;
 import org.springframework.beans.BeanWrapperImpl;
@@ -25,6 +26,9 @@ public class QuejaServiceImpl implements QuejaService {
     
     @Autowired
     private NotificacionService notificacionService;
+    
+    @Autowired
+    private UsuarioRepository usuarioRepository;
 
     @Override
     public List<Queja> obtenerTodos() {
@@ -61,6 +65,62 @@ public class QuejaServiceImpl implements QuejaService {
 
     @Override
     public Queja guardar(Queja queja) {
+        return quejaRepository.save(queja);
+    }
+    
+    @Override
+    public Queja crearQueja(Map<String, Object> payload) {
+        Long usuarioId = extraerLong(payload, "usuarioId");
+        if (usuarioId == null && payload.get("usuario") instanceof Map<?, ?> usuarioMap) {
+            Object idObj = usuarioMap.get("id");
+            if (idObj != null) {
+                usuarioId = Long.parseLong(idObj.toString());
+            }
+        }
+        if (usuarioId == null) {
+            throw new IllegalArgumentException("El campo usuarioId es obligatorio");
+        }
+        
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        
+        String descripcion = extraerTexto(payload, "descripcion");
+        String tipoQueja = extraerTexto(payload, "tipoQueja");
+        if (tipoQueja == null || tipoQueja.isBlank()) {
+            tipoQueja = extraerTexto(payload, "clasificacion");
+        }
+        if (tipoQueja == null || tipoQueja.isBlank()) {
+            tipoQueja = extraerTexto(payload, "tipo");
+        }
+        if (descripcion == null || descripcion.isBlank()) {
+            throw new IllegalArgumentException("El campo descripcion es obligatorio");
+        }
+        if (tipoQueja == null || tipoQueja.isBlank()) {
+            throw new IllegalArgumentException("El campo tipo de queja/clasificacion es obligatorio");
+        }
+        
+        String torreUsuario = usuario.getTorre();
+        String aptoUsuario = usuario.getApartamento();
+        String torrePayload = extraerTexto(payload, "torre");
+        String apartamentoPayload = extraerTexto(payload, "apartamento");
+        
+        String torreFinal = (torreUsuario != null && !torreUsuario.isBlank()) ? torreUsuario : torrePayload;
+        if (torreFinal == null || torreFinal.isBlank()) {
+            throw new IllegalArgumentException("La torre es obligatoria");
+        }
+        String apartamentoFinal = (aptoUsuario != null && !aptoUsuario.isBlank()) ? aptoUsuario : apartamentoPayload;
+        
+        LocalDateTime fecha = parseFecha(extraerTexto(payload, "fecha"));
+        
+        Queja queja = new Queja();
+        queja.setUsuario(usuario);
+        queja.setDescripcion(descripcion.trim());
+        queja.setTipoQueja(tipoQueja.trim().toUpperCase());
+        queja.setTorre(torreFinal.trim());
+        queja.setApartamento(apartamentoFinal != null ? apartamentoFinal.trim() : null);
+        queja.setFechaCreacion(fecha != null ? fecha : LocalDateTime.now());
+        queja.setEstado(Queja.Estado.PENDIENTE);
+        
         return quejaRepository.save(queja);
     }
     
@@ -114,6 +174,12 @@ public class QuejaServiceImpl implements QuejaService {
     
     private String categorizarQueja(Queja queja) {
         BeanWrapperImpl beanQueja = new BeanWrapperImpl(queja);
+        if (beanQueja.isReadableProperty("tipoQueja")) {
+            Object tipoObj = beanQueja.getPropertyValue("tipoQueja");
+            if (tipoObj != null && !tipoObj.toString().isBlank()) {
+                return tipoObj.toString().trim().toUpperCase();
+            }
+        }
         String descripcion = "";
         if (beanQueja.isReadableProperty("descripcion")) {
             Object valor = beanQueja.getPropertyValue("descripcion");
@@ -125,5 +191,31 @@ public class QuejaServiceImpl implements QuejaService {
         if (descripcion.contains("violencia") || descripcion.contains("agres")) return "VIOLENCIA";
         if (descripcion.contains("bbq") || descripcion.contains("piscina") || descripcion.contains("gimnasio") || descripcion.contains("salon")) return "ZONAS_COMUNES";
         return "GENERAL";
+    }
+    
+    private String extraerTexto(Map<String, Object> payload, String key) {
+        Object value = payload.get(key);
+        return value != null ? value.toString() : null;
+    }
+    
+    private Long extraerLong(Map<String, Object> payload, String key) {
+        Object value = payload.get(key);
+        if (value == null) return null;
+        try {
+            return Long.parseLong(value.toString());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    
+    private LocalDateTime parseFecha(String fecha) {
+        if (fecha == null || fecha.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(fecha);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Formato de fecha inválido. Usa ISO 8601");
+        }
     }
 }

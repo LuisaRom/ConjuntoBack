@@ -13,6 +13,7 @@ public interface QuejaService {
     Map<String, List<Queja>> obtenerTodasAgrupadasPorCategoria(String categoria);
     Optional<Queja> obtenerPorId(Long id);
     Queja guardar(Queja queja);
+    Queja crearQueja(Map<String, Object> payload);
     Queja enProceso(Long id);
     Queja finalizar(Long id);
     void eliminar(Long id);

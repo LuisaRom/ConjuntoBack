@@ -10,5 +10,6 @@ public interface ReservaZonaComunService {
     List<ReservaZonaComun> obtenerTodos();
     Optional<ReservaZonaComun> obtenerPorId(Long id);
     ReservaZonaComun guardar(ReservaZonaComun reservaZonaComun);
+    ReservaZonaComun crearReserva(ReservaZonaComun reservaZonaComun);
     void eliminar(Long id);
 }

@@ -4,6 +4,7 @@ package com.example.APP.Controller;
 import com.example.APP.Model.Queja;
 import com.example.APP.Service.QuejaService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -38,6 +39,15 @@ public class QuejaController {
     @PostMapping
     public Queja guardar(@RequestBody Queja queja) {
         return quejaService.guardar(queja);
+    }
+    
+    @PostMapping("/crear")
+    public ResponseEntity<?> crear(@RequestBody Map<String, Object> payload) {
+        try {
+            return ResponseEntity.ok(quejaService.crearQueja(payload));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
     
     @PutMapping("/{id}/en-proceso")

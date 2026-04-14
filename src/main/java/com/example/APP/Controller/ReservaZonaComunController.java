@@ -5,6 +5,8 @@ import com.example.APP.Model.Usuario;
 import com.example.APP.Service.ReservaZonaComunService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.BeanWrapperImpl;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -127,7 +129,17 @@ public class ReservaZonaComunController {
 
     @PostMapping
     public ReservaZonaComun guardar(@RequestBody ReservaZonaComun reservaZonaComun) {
-        return reservaZonaComunService.guardar(reservaZonaComun);
+        return reservaZonaComunService.crearReserva(reservaZonaComun);
+    }
+    
+    @PostMapping("/crear")
+    public ResponseEntity<?> crear(@RequestBody ReservaZonaComun reservaZonaComun) {
+        try {
+            ReservaZonaComun creada = reservaZonaComunService.crearReserva(reservaZonaComun);
+            return ResponseEntity.status(HttpStatus.CREATED).body(creada);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @DeleteMapping("/{id}")

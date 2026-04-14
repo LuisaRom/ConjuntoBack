@@ -19,6 +19,9 @@ public class ReservaZonaComun {
     private LocalDate fechaReserva;
     private LocalTime horaInicio;
     private LocalTime horaFin;
+    
+    @Column(name = "servicios_adicionales", columnDefinition = "TEXT")
+    private String serviciosAdicionales;
 
     @ManyToOne
     @JoinColumn(name = "usuario_id")
