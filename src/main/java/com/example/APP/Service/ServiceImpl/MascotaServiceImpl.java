@@ -43,7 +43,7 @@ public class MascotaServiceImpl implements MascotaService {
     }
     
     @Override
-    public Mascota crearMascota(String nombre, String tipo, String raza, Long usuarioId, MultipartFile foto) {
+    public Mascota crearMascota(String nombre, String tipo, String raza, String usernameAutenticado, MultipartFile foto) {
         if (nombre == null || nombre.isBlank()) {
             throw new IllegalArgumentException("El campo nombre es obligatorio");
         }
@@ -53,14 +53,14 @@ public class MascotaServiceImpl implements MascotaService {
         if (raza == null || raza.isBlank()) {
             throw new IllegalArgumentException("El campo raza es obligatorio");
         }
-        if (usuarioId == null) {
-            throw new IllegalArgumentException("El campo usuarioId es obligatorio");
+        if (usernameAutenticado == null || usernameAutenticado.isBlank()) {
+            throw new IllegalArgumentException("No hay usuario autenticado");
         }
         if (foto == null || foto.isEmpty()) {
             throw new IllegalArgumentException("La foto es obligatoria");
         }
         
-        Usuario usuario = usuarioRepository.findById(usuarioId)
+        Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
         
         String fotoUrl = guardarFoto(foto);

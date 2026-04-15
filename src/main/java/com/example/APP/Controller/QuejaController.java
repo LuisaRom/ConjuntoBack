@@ -5,6 +5,7 @@ import com.example.APP.Model.Queja;
 import com.example.APP.Service.QuejaService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -42,9 +43,9 @@ public class QuejaController {
     }
     
     @PostMapping("/crear")
-    public ResponseEntity<?> crear(@RequestBody Map<String, Object> payload) {
+    public ResponseEntity<?> crear(@RequestBody Map<String, Object> payload, Authentication authentication) {
         try {
-            return ResponseEntity.ok(quejaService.crearQueja(payload));
+            return ResponseEntity.ok(quejaService.crearQueja(payload, authentication.getName()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

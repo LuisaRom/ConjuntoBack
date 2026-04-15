@@ -14,5 +14,6 @@ public interface UsuarioService {
     Usuario crearUsuario(Map<String, Object> payload);
     void eliminar(Long id);
     Usuario login(String usuario, String password);
+    Usuario obtenerPorUsuario(String usuario);
 
 }

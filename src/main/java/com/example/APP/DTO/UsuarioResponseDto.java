@@ -1,39 +1,28 @@
-package com.example.APP.Model;
+package com.example.APP.DTO;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import com.example.APP.Model.Usuario;
 
-@Entity
-@Getter
-@Setter
-public class Usuario {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+public class UsuarioResponseDto {
     private Long id;
-
     private String nombre;
     private String documento;
     private String telefono;
     private String usuario;
-    @JsonIgnore
-    private String password;
+    private Usuario.Rol rol;
+    private String torre;
+    private String apartamento;
 
-    public Usuario() {
-    }
-
-    public Usuario(Long id, String nombre, String documento, String telefono, String usuario, String password, Rol rol, String torre, String apartamento) {
-        this.id = id;
-        this.nombre = nombre;
-        this.documento = documento;
-        this.telefono = telefono;
-        this.usuario = usuario;
-        this.password = password;
-        this.rol = rol;
-        this.torre = torre;
-        this.apartamento = apartamento;
+    public static UsuarioResponseDto fromEntity(Usuario usuarioEntity) {
+        UsuarioResponseDto dto = new UsuarioResponseDto();
+        dto.setId(usuarioEntity.getId());
+        dto.setNombre(usuarioEntity.getNombre());
+        dto.setDocumento(usuarioEntity.getDocumento());
+        dto.setTelefono(usuarioEntity.getTelefono());
+        dto.setUsuario(usuarioEntity.getUsuario());
+        dto.setRol(usuarioEntity.getRol());
+        dto.setTorre(usuarioEntity.getTorre());
+        dto.setApartamento(usuarioEntity.getApartamento());
+        return dto;
     }
 
     public Long getId() {
@@ -76,19 +65,11 @@ public class Usuario {
         this.usuario = usuario;
     }
 
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
-    public Rol getRol() {
+    public Usuario.Rol getRol() {
         return rol;
     }
 
-    public void setRol(Rol rol) {
+    public void setRol(Usuario.Rol rol) {
         this.rol = rol;
     }
 
@@ -106,15 +87,5 @@ public class Usuario {
 
     public void setApartamento(String apartamento) {
         this.apartamento = apartamento;
-    }
-
-    @Enumerated(EnumType.STRING)
-    private Rol rol;
-
-    private String torre;
-    private String apartamento;
-
-    public enum Rol {
-        ADMINISTRADOR, CELADOR, RESIDENTE
     }
 }

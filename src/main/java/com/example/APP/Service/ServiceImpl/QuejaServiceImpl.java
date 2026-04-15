@@ -69,19 +69,12 @@ public class QuejaServiceImpl implements QuejaService {
     }
     
     @Override
-    public Queja crearQueja(Map<String, Object> payload) {
-        Long usuarioId = extraerLong(payload, "usuarioId");
-        if (usuarioId == null && payload.get("usuario") instanceof Map<?, ?> usuarioMap) {
-            Object idObj = usuarioMap.get("id");
-            if (idObj != null) {
-                usuarioId = Long.parseLong(idObj.toString());
-            }
-        }
-        if (usuarioId == null) {
-            throw new IllegalArgumentException("El campo usuarioId es obligatorio");
+    public Queja crearQueja(Map<String, Object> payload, String usernameAutenticado) {
+        if (usernameAutenticado == null || usernameAutenticado.isBlank()) {
+            throw new IllegalArgumentException("No hay usuario autenticado");
         }
         
-        Usuario usuario = usuarioRepository.findById(usuarioId)
+        Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
         
         String descripcion = extraerTexto(payload, "descripcion");
@@ -196,16 +189,6 @@ public class QuejaServiceImpl implements QuejaService {
     private String extraerTexto(Map<String, Object> payload, String key) {
         Object value = payload.get(key);
         return value != null ? value.toString() : null;
-    }
-    
-    private Long extraerLong(Map<String, Object> payload, String key) {
-        Object value = payload.get(key);
-        if (value == null) return null;
-        try {
-            return Long.parseLong(value.toString());
-        } catch (Exception e) {
-            return null;
-        }
     }
     
     private LocalDateTime parseFecha(String fecha) {

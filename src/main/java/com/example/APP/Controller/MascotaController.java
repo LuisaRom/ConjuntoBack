@@ -8,6 +8,7 @@ import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
@@ -53,11 +54,11 @@ public class MascotaController {
             @RequestParam("nombre") String nombre,
             @RequestParam("tipo") String tipo,
             @RequestParam("raza") String raza,
-            @RequestParam("usuarioId") Long usuarioId,
-            @RequestPart("foto") MultipartFile foto
+            @RequestPart("foto") MultipartFile foto,
+            Authentication authentication
     ) {
         try {
-            Mascota creada = mascotaService.crearMascota(nombre, tipo, raza, usuarioId, foto);
+            Mascota creada = mascotaService.crearMascota(nombre, tipo, raza, authentication.getName(), foto);
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("id", creada.getId());
             resp.put("nombre", creada.getNombre());

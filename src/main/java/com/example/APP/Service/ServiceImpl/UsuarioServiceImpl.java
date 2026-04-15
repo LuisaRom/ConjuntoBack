@@ -3,8 +3,9 @@ package com.example.APP.Service.ServiceImpl;
 import com.example.APP.Model.Usuario;
 import com.example.APP.Repository.UsuarioRepository;
 import com.example.APP.Service.UsuarioService;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import java.util.List;
 import java.util.Map;
@@ -14,10 +15,11 @@ import java.util.Optional;
 public class UsuarioServiceImpl implements UsuarioService {
 
     private final UsuarioRepository usuarioRepository;
-    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    private final PasswordEncoder passwordEncoder;
 
-    public UsuarioServiceImpl(UsuarioRepository usuarioRepository) {
+    public UsuarioServiceImpl(UsuarioRepository usuarioRepository, PasswordEncoder passwordEncoder) {
         this.usuarioRepository = usuarioRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
@@ -32,6 +34,10 @@ public class UsuarioServiceImpl implements UsuarioService {
 
     @Override
     public Usuario guardar(Usuario usuario) {
+        if (usuario.getPassword() == null || usuario.getPassword().isBlank()) {
+            throw new IllegalArgumentException("El campo 'password' es obligatorio");
+        }
+        usuario.setPassword(codificarPasswordSiHaceFalta(usuario.getPassword()));
         return usuarioRepository.save(usuario);
     }
     
@@ -82,7 +88,7 @@ public class UsuarioServiceImpl implements UsuarioService {
         nuevoUsuario.setRol(rol);
         nuevoUsuario.setApartamento(apartamento != null ? apartamento.trim() : "");
         nuevoUsuario.setTorre(torre != null ? torre.trim() : "");
-        nuevoUsuario.setPassword(passwordEncoder.encode(password));
+        nuevoUsuario.setPassword(codificarPasswordSiHaceFalta(password));
 
         return usuarioRepository.save(nuevoUsuario);
     }
@@ -94,18 +100,35 @@ public class UsuarioServiceImpl implements UsuarioService {
 
     @Override
     public Usuario login(String usuario, String password) {
-        return usuarioRepository
+        Usuario user = usuarioRepository
                 .findByUsuario(usuario)
-                .filter(u -> {
-                    String hash = u.getPassword();
-                    if (hash == null) return false;
-                    if (hash.startsWith("$2a$") || hash.startsWith("$2b$") || hash.startsWith("$2y$")) {
-                        return passwordEncoder.matches(password, hash);
-                    }
-                    // Compatibilidad temporal con usuarios antiguos no encriptados.
-                    return hash.equals(password);
-                })
-                .orElseThrow(() -> new RuntimeException("Usuario o contraseña incorrectos"));
+                .orElseThrow(() -> new BadCredentialsException("Usuario o contraseña incorrectos"));
+
+        String storedPassword = user.getPassword();
+        if (storedPassword == null || storedPassword.isBlank()) {
+            throw new BadCredentialsException("Usuario o contraseña incorrectos");
+        }
+
+        // Compatibilidad controlada: si el password estaba en plano, migrarlo al hash al primer login exitoso.
+        if (esHashBcrypt(storedPassword)) {
+            if (!passwordEncoder.matches(password, storedPassword)) {
+                throw new BadCredentialsException("Usuario o contraseña incorrectos");
+            }
+            return user;
+        }
+
+        if (!storedPassword.equals(password)) {
+            throw new BadCredentialsException("Usuario o contraseña incorrectos");
+        }
+
+        user.setPassword(codificarPasswordSiHaceFalta(password));
+        return usuarioRepository.save(user);
+    }
+
+    @Override
+    public Usuario obtenerPorUsuario(String usuario) {
+        return usuarioRepository.findByUsuario(usuario)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
     }
     
     private String extraerTexto(Map<String, Object> payload, String key) {
@@ -117,6 +140,15 @@ public class UsuarioServiceImpl implements UsuarioService {
         if (valor == null || valor.trim().isEmpty()) {
             throw new IllegalArgumentException("El campo '" + nombreCampo + "' es obligatorio");
         }
+    }
+
+    private String codificarPasswordSiHaceFalta(String rawPassword) {
+        String trimmed = rawPassword.trim();
+        return esHashBcrypt(trimmed) ? trimmed : passwordEncoder.encode(trimmed);
+    }
+
+    private boolean esHashBcrypt(String value) {
+        return value.startsWith("$2a$") || value.startsWith("$2b$") || value.startsWith("$2y$");
     }
 
 }
