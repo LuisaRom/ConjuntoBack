@@ -17,6 +17,7 @@ public class Mascota {
     private String nombre;
     private String tipo;
     private String raza;
+    private String fotoUrl;
 
     @ManyToOne
     @JoinColumn(name = "usuario_id")

@@ -1,19 +1,31 @@
 package com.example.APP.Service.ServiceImpl;
 
 import com.example.APP.Model.Mascota;
+import com.example.APP.Model.Usuario;
 import com.example.APP.Repository.MascotaRepository;
+import com.example.APP.Repository.UsuarioRepository;
 import com.example.APP.Service.MascotaService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class MascotaServiceImpl implements MascotaService {
 
     @Autowired
     private MascotaRepository mascotaRepository;
+    
+    @Autowired
+    private UsuarioRepository usuarioRepository;
 
     @Override
     public List<Mascota> obtenerTodos() {
@@ -29,9 +41,63 @@ public class MascotaServiceImpl implements MascotaService {
     public Mascota guardar(Mascota mascota) {
         return mascotaRepository.save(mascota);
     }
+    
+    @Override
+    public Mascota crearMascota(String nombre, String tipo, String raza, Long usuarioId, MultipartFile foto) {
+        if (nombre == null || nombre.isBlank()) {
+            throw new IllegalArgumentException("El campo nombre es obligatorio");
+        }
+        if (tipo == null || tipo.isBlank()) {
+            throw new IllegalArgumentException("El campo tipo es obligatorio");
+        }
+        if (raza == null || raza.isBlank()) {
+            throw new IllegalArgumentException("El campo raza es obligatorio");
+        }
+        if (usuarioId == null) {
+            throw new IllegalArgumentException("El campo usuarioId es obligatorio");
+        }
+        if (foto == null || foto.isEmpty()) {
+            throw new IllegalArgumentException("La foto es obligatoria");
+        }
+        
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        
+        String fotoUrl = guardarFoto(foto);
+        
+        Mascota mascota = new Mascota();
+        mascota.setNombre(nombre.trim());
+        mascota.setTipo(tipo.trim());
+        mascota.setRaza(raza.trim());
+        mascota.setFotoUrl(fotoUrl);
+        mascota.setUsuario(usuario);
+        
+        return mascotaRepository.save(mascota);
+    }
 
     @Override
     public void eliminar(Long id) {
         mascotaRepository.deleteById(id);
+    }
+    
+    private String guardarFoto(MultipartFile foto) {
+        try {
+            Path carpeta = Paths.get("uploads", "mascotas").toAbsolutePath().normalize();
+            Files.createDirectories(carpeta);
+            
+            String nombreOriginal = foto.getOriginalFilename() != null ? foto.getOriginalFilename() : "foto";
+            String extension = "";
+            int idx = nombreOriginal.lastIndexOf('.');
+            if (idx >= 0) {
+                extension = nombreOriginal.substring(idx);
+            }
+            
+            String nombreArchivo = UUID.randomUUID() + extension;
+            Path destino = carpeta.resolve(nombreArchivo);
+            Files.copy(foto.getInputStream(), destino, StandardCopyOption.REPLACE_EXISTING);
+            return destino.toString();
+        } catch (IOException e) {
+            throw new RuntimeException("No se pudo guardar la foto de la mascota");
+        }
     }
 }

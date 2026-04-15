@@ -1,13 +1,17 @@
 package com.example.APP.Service.ServiceImpl;
 
+import com.example.APP.Model.HistorialNotificacion;
 import com.example.APP.Model.Notificacion;
 import com.example.APP.Model.Usuario;
+import com.example.APP.Repository.HistorialNotificacionRepository;
 import com.example.APP.Repository.NotificacionRepository;
 import com.example.APP.Repository.UsuarioRepository;
 import com.example.APP.Service.NotificacionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,9 +23,13 @@ public class NotificacionServiceImpl implements NotificacionService {
     
     @Autowired
     private UsuarioRepository usuarioRepository;
+    
+    @Autowired
+    private HistorialNotificacionRepository historialNotificacionRepository;
 
     @Override
     public List<Notificacion> obtenerTodos() {
+        archivarRecibosVencidos();
         return notificacionRepository.findAll();
     }
 
@@ -80,5 +88,49 @@ public class NotificacionServiceImpl implements NotificacionService {
     @Override
     public void eliminar(Long id) {
         notificacionRepository.deleteById(id);
+    }
+    
+    private void archivarRecibosVencidos() {
+        List<Notificacion> todas = notificacionRepository.findAll();
+        LocalDateTime limite = LocalDateTime.now().minusDays(20);
+        List<Notificacion> paraEliminar = new ArrayList<>();
+        
+        for (Notificacion n : todas) {
+            if (!esNotificacionRecibo(n)) {
+                continue;
+            }
+            if (n.getFechaEnvio() == null || !n.getFechaEnvio().isBefore(limite)) {
+                continue;
+            }
+            
+            boolean yaArchivada = historialNotificacionRepository.findByNotificacionOriginalId(n.getId()).isPresent();
+            if (!yaArchivada) {
+                HistorialNotificacion h = new HistorialNotificacion();
+                h.setNotificacionOriginalId(n.getId());
+                h.setMensaje(n.getMensaje());
+                h.setFechaEnvio(n.getFechaEnvio());
+                h.setImagenUrl(n.getImagenUrl());
+                h.setVideoUrl(n.getVideoUrl());
+                h.setUsuariosEtiquetados(n.getUsuariosEtiquetados());
+                h.setUsuarioId(n.getUsuario() != null ? n.getUsuario().getId() : null);
+                h.setFechaArchivado(LocalDateTime.now());
+                historialNotificacionRepository.save(h);
+            }
+            paraEliminar.add(n);
+        }
+        
+        if (!paraEliminar.isEmpty()) {
+            notificacionRepository.deleteAll(paraEliminar);
+        }
+    }
+    
+    private boolean esNotificacionRecibo(Notificacion n) {
+        if (n == null || n.getMensaje() == null) {
+            return false;
+        }
+        String mensaje = n.getMensaje().toLowerCase();
+        boolean tieneRecibo = mensaje.contains("recibo");
+        boolean tieneTipo = mensaje.contains("enel") || mensaje.contains("vanti") || mensaje.contains("epz");
+        return tieneRecibo && tieneTipo;
     }
 }
