@@ -1,7 +1,9 @@
 package com.example.APP.Service.ServiceImpl;
 
 import com.example.APP.Model.AccesoPeatonal;
+import com.example.APP.Model.Usuario;
 import com.example.APP.Repository.AccesoPeatonalRepository;
+import com.example.APP.Repository.UsuarioRepository;
 import com.example.APP.Service.AccesoPeatonalService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -15,6 +17,9 @@ public class AccesoPeatonalServiceImpl implements AccesoPeatonalService {
 
     @Autowired
     private AccesoPeatonalRepository accesoPeatonalRepository;
+
+    @Autowired
+    private UsuarioRepository usuarioRepository;
 
     @Override
     public List<AccesoPeatonal> obtenerTodos() {
@@ -41,7 +46,27 @@ public class AccesoPeatonalServiceImpl implements AccesoPeatonalService {
     }
 
     @Override
+    public AccesoPeatonal guardarParaUsuarioAutenticado(AccesoPeatonal accesoPeatonal, String usernameAutenticado) {
+        Usuario usuarioAutenticado = usuarioRepository.findByUsuario(usernameAutenticado)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
+
+        if (usuarioAutenticado.getRol() != Usuario.Rol.RESIDENTE) {
+            throw new IllegalArgumentException("Solo los residentes pueden generar accesos peatonales");
+        }
+
+        accesoPeatonal.setAutorizadoPor(usuarioAutenticado);
+        accesoPeatonal.setTorre(textoSeguro(usuarioAutenticado.getTorre()));
+        accesoPeatonal.setApartamento(textoSeguro(usuarioAutenticado.getApartamento()));
+
+        return guardar(accesoPeatonal);
+    }
+
+    @Override
     public void eliminar(Long id) {
         accesoPeatonalRepository.deleteById(id);
+    }
+
+    private String textoSeguro(String valor) {
+        return valor != null ? valor.trim() : "";
     }
 }

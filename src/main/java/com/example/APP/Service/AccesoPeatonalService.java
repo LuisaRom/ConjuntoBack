@@ -10,6 +10,7 @@ public interface AccesoPeatonalService {
     List<AccesoPeatonal> obtenerTodos();
     Optional<AccesoPeatonal> obtenerPorId(Long id);
     AccesoPeatonal guardar(AccesoPeatonal accesoPeatonal);
+    AccesoPeatonal guardarParaUsuarioAutenticado(AccesoPeatonal accesoPeatonal, String usernameAutenticado);
     void eliminar(Long id);
 }
 

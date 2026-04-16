@@ -127,6 +127,55 @@ public class ReservaZonaComunController {
         return reservaZonaComunService.obtenerPorId(id);
     }
 
+    @GetMapping("/salon-comunal/disponibilidad")
+    public ResponseEntity<?> consultarDisponibilidadSalonComunal(
+            @RequestParam LocalDate fechaReserva,
+            @RequestParam LocalTime horaInicio,
+            @RequestParam LocalTime horaFin
+    ) {
+        try {
+            boolean disponible = reservaZonaComunService
+                    .estaDisponibleSalonComunal(fechaReserva, horaInicio, horaFin);
+            Map<String, Object> respuesta = new LinkedHashMap<>();
+            respuesta.put("zonaComun", "salon comunal");
+            respuesta.put("fechaReserva", fechaReserva);
+            respuesta.put("horaInicio", horaInicio);
+            respuesta.put("horaFin", horaFin);
+            respuesta.put("duracionMinimaHoras", 5);
+            respuesta.put("rangoPermitido", "08:00-22:00");
+            respuesta.put("disponible", disponible);
+            return ResponseEntity.ok(respuesta);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/zona-bbq/disponibilidad")
+    public ResponseEntity<?> consultarDisponibilidadZonaBbq(
+            @RequestParam LocalDate fechaReserva,
+            @RequestParam LocalTime horaInicio,
+            @RequestParam LocalTime horaFin,
+            @RequestParam Long usuarioId
+    ) {
+        try {
+            boolean disponible = reservaZonaComunService
+                    .estaDisponibleZonaBbq(fechaReserva, horaInicio, horaFin, usuarioId);
+            Map<String, Object> respuesta = new LinkedHashMap<>();
+            respuesta.put("zonaComun", "zona bbq");
+            respuesta.put("fechaReserva", fechaReserva);
+            respuesta.put("horaInicio", horaInicio);
+            respuesta.put("horaFin", horaFin);
+            respuesta.put("usuarioId", usuarioId);
+            respuesta.put("maximoReservasPorDiaUsuario", 1);
+            respuesta.put("diasPermitidos", "jueves-domingo");
+            respuesta.put("rangoPermitido", "10:00-22:00");
+            respuesta.put("disponible", disponible);
+            return ResponseEntity.ok(respuesta);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @PostMapping
     public ReservaZonaComun guardar(@RequestBody ReservaZonaComun reservaZonaComun) {
         return reservaZonaComunService.crearReserva(reservaZonaComun);

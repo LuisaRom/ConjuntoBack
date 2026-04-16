@@ -1,5 +1,6 @@
 package com.example.APP.Model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -25,6 +26,7 @@ public class AccesoVehicular {
 
     @ManyToOne
     @JoinColumn(name = "autorizado_por")
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private Usuario autorizadoPor;
 
     private LocalDateTime horaAutorizada;

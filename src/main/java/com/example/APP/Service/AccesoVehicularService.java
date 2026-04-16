@@ -10,5 +10,6 @@ public interface AccesoVehicularService {
     List<AccesoVehicular> obtenerTodos();
     Optional<AccesoVehicular> obtenerPorId(Long id);
     AccesoVehicular guardar(AccesoVehicular accesoVehicular);
+    AccesoVehicular guardarParaUsuarioAutenticado(AccesoVehicular accesoVehicular, String usernameAutenticado);
     void eliminar(Long id);
 }

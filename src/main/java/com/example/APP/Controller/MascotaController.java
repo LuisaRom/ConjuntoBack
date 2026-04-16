@@ -2,6 +2,8 @@ package com.example.APP.Controller;
 
 import com.example.APP.Model.Mascota;
 import com.example.APP.Service.MascotaService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -26,6 +28,8 @@ import java.util.Optional;
 @CrossOrigin(originPatterns = "*", allowCredentials = "true")
 public class MascotaController {
 
+    private static final Logger log = LoggerFactory.getLogger(MascotaController.class);
+
     @Autowired
     private MascotaService mascotaService;
 
@@ -49,15 +53,18 @@ public class MascotaController {
         return mascotaService.guardar(mascota);
     }
     
-    @PostMapping("/crear")
+    @PostMapping(value = "/crear", consumes = {"multipart/form-data"})
     public ResponseEntity<?> crear(
             @RequestParam("nombre") String nombre,
             @RequestParam("tipo") String tipo,
-            @RequestParam("raza") String raza,
-            @RequestPart("foto") MultipartFile foto,
+            @RequestParam(value = "raza", required = false) String raza,
+            @RequestParam(value = "foto", required = false) MultipartFile foto,
             Authentication authentication
     ) {
         try {
+            if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+                throw new IllegalArgumentException("No hay usuario autenticado");
+            }
             Mascota creada = mascotaService.crearMascota(nombre, tipo, raza, authentication.getName(), foto);
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("id", creada.getId());
@@ -69,6 +76,9 @@ public class MascotaController {
             resp.put("usuario", creada.getUsuario());
             return ResponseEntity.ok(resp);
         } catch (IllegalArgumentException e) {
+            log.warn("Error 400 al crear mascota. usuario={}, nombre='{}', tipo='{}', raza='{}', fotoPresente={}, motivo={}",
+                    authentication != null ? authentication.getName() : "anon",
+                    nombre, tipo, raza, foto != null && !foto.isEmpty(), e.getMessage());
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }

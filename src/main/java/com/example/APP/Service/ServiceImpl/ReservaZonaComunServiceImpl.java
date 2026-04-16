@@ -57,6 +57,75 @@ public class ReservaZonaComunServiceImpl implements ReservaZonaComunService {
     }
 
     @Override
+    public boolean estaDisponibleSalonComunal(java.time.LocalDate fechaReserva, LocalTime horaInicio, LocalTime horaFin) {
+        if (fechaReserva == null) {
+            throw new IllegalArgumentException("El campo fechaReserva es obligatorio");
+        }
+        if (horaInicio == null || horaFin == null) {
+            throw new IllegalArgumentException("Los campos horaInicio y horaFin son obligatorios");
+        }
+        if (!horaFin.isAfter(horaInicio)) {
+            throw new IllegalArgumentException("La hora fin debe ser posterior a la hora inicio");
+        }
+
+        validarHorarioSalonComunal(horaInicio, horaFin);
+
+        List<ReservaZonaComun> reservasSalonDia = reservaZonaComunRepository
+                .findByZonaComunIgnoreCaseAndFechaReserva("salon comunal", fechaReserva);
+
+        for (ReservaZonaComun existente : reservasSalonDia) {
+            if (existente.getHoraInicio() == null || existente.getHoraFin() == null) {
+                continue;
+            }
+            boolean seCruza = horaInicio.isBefore(existente.getHoraFin())
+                    && horaFin.isAfter(existente.getHoraInicio());
+            if (seCruza) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public boolean estaDisponibleZonaBbq(java.time.LocalDate fechaReserva, LocalTime horaInicio, LocalTime horaFin, Long usuarioId) {
+        if (fechaReserva == null) {
+            throw new IllegalArgumentException("El campo fechaReserva es obligatorio");
+        }
+        if (horaInicio == null || horaFin == null) {
+            throw new IllegalArgumentException("Los campos horaInicio y horaFin son obligatorios");
+        }
+        if (usuarioId == null) {
+            throw new IllegalArgumentException("El campo usuarioId es obligatorio");
+        }
+        if (!horaFin.isAfter(horaInicio)) {
+            throw new IllegalArgumentException("La hora fin debe ser posterior a la hora inicio");
+        }
+
+        validarHorarioZonaBbq(fechaReserva.getDayOfWeek(), horaInicio, horaFin);
+
+        List<ReservaZonaComun> reservasUsuario = reservaZonaComunRepository
+                .findByZonaComunIgnoreCaseAndFechaReservaAndUsuarioId("zona bbq", fechaReserva, usuarioId);
+        if (!reservasUsuario.isEmpty()) {
+            return false;
+        }
+
+        List<ReservaZonaComun> reservasBbqDia = reservaZonaComunRepository
+                .findByZonaComunIgnoreCaseAndFechaReserva("zona bbq", fechaReserva);
+
+        for (ReservaZonaComun existente : reservasBbqDia) {
+            if (existente.getHoraInicio() == null || existente.getHoraFin() == null) {
+                continue;
+            }
+            boolean seCruza = horaInicio.isBefore(existente.getHoraFin())
+                    && horaFin.isAfter(existente.getHoraInicio());
+            if (seCruza) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
     public void eliminar(Long id) {
         reservaZonaComunRepository.deleteById(id);
     }
@@ -120,20 +189,10 @@ public class ReservaZonaComunServiceImpl implements ReservaZonaComunService {
                 }
             }
             case "salon comunal" -> {
-                if (inicio.isBefore(LocalTime.of(8, 0)) || fin.isAfter(LocalTime.of(22, 0))) {
-                    throw new IllegalArgumentException("Salon comunal permite horario 8:00-22:00");
-                }
-                if (minutos < 300) {
-                    throw new IllegalArgumentException("Salon comunal requiere mínimo 5 horas por reserva");
-                }
+                validarHorarioSalonComunal(inicio, fin);
             }
             case "zona bbq" -> {
-                if (dia.getValue() < DayOfWeek.THURSDAY.getValue() || dia.getValue() > DayOfWeek.SUNDAY.getValue()) {
-                    throw new IllegalArgumentException("Zona BBQ solo permite reservas de jueves a domingo");
-                }
-                if (inicio.isBefore(LocalTime.of(10, 0)) || fin.isAfter(LocalTime.of(22, 0))) {
-                    throw new IllegalArgumentException("Zona BBQ permite horario 10:00-22:00");
-                }
+                validarHorarioZonaBbq(dia, inicio, fin);
             }
             default -> throw new IllegalArgumentException("Tipo de reserva no soportado");
         }
@@ -223,5 +282,28 @@ public class ReservaZonaComunServiceImpl implements ReservaZonaComunService {
             sb.append("; ");
         }
         sb.append(valor);
+    }
+
+    private void validarHorarioSalonComunal(LocalTime inicio, LocalTime fin) {
+        if (inicio.isBefore(LocalTime.of(8, 0)) || fin.isAfter(LocalTime.of(22, 0))) {
+            throw new IllegalArgumentException(
+                    "Salon comunal permite seleccionar hora inicio y hora fin entre 8:00 y 22:00"
+            );
+        }
+        long minutos = Duration.between(inicio, fin).toMinutes();
+        if (minutos < 300) {
+            throw new IllegalArgumentException("Salon comunal requiere un rango mínimo de 5 horas");
+        }
+    }
+
+    private void validarHorarioZonaBbq(DayOfWeek dia, LocalTime inicio, LocalTime fin) {
+        if (dia.getValue() < DayOfWeek.THURSDAY.getValue() || dia.getValue() > DayOfWeek.SUNDAY.getValue()) {
+            throw new IllegalArgumentException("Zona BBQ solo permite reservas de jueves a domingo");
+        }
+        if (inicio.isBefore(LocalTime.of(10, 0)) || fin.isAfter(LocalTime.of(22, 0))) {
+            throw new IllegalArgumentException(
+                    "Zona BBQ permite seleccionar hora inicio y hora fin entre 10:00 y 22:00"
+            );
+        }
     }
 }

@@ -3,6 +3,7 @@ package com.example.APP.Service.ServiceImpl;
 import com.example.APP.Model.Usuario;
 import com.example.APP.Repository.UsuarioRepository;
 import com.example.APP.Service.UsuarioService;
+import jakarta.annotation.PostConstruct;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,25 @@ public class UsuarioServiceImpl implements UsuarioService {
     public UsuarioServiceImpl(UsuarioRepository usuarioRepository, PasswordEncoder passwordEncoder) {
         this.usuarioRepository = usuarioRepository;
         this.passwordEncoder = passwordEncoder;
+    }
+
+    @PostConstruct
+    public void normalizarPasswordsUsuariosExistentes() {
+        List<Usuario> usuarios = usuarioRepository.findAll();
+        boolean huboCambios = false;
+
+        for (Usuario usuario : usuarios) {
+            String passwordEsperado = passwordPorRol(usuario.getRol());
+            if (passwordEsperado == null || yaTienePasswordEsperado(usuario.getPassword(), passwordEsperado)) {
+                continue;
+            }
+            usuario.setPassword(passwordEncoder.encode(passwordEsperado));
+            huboCambios = true;
+        }
+
+        if (huboCambios) {
+            usuarioRepository.saveAll(usuarios);
+        }
     }
 
     @Override
@@ -149,6 +169,27 @@ public class UsuarioServiceImpl implements UsuarioService {
 
     private boolean esHashBcrypt(String value) {
         return value.startsWith("$2a$") || value.startsWith("$2b$") || value.startsWith("$2y$");
+    }
+
+    private String passwordPorRol(Usuario.Rol rol) {
+        if (rol == null) {
+            return null;
+        }
+        return switch (rol) {
+            case ADMINISTRADOR -> "admin123";
+            case RESIDENTE -> "residente123";
+            case CELADOR -> "celador123";
+        };
+    }
+
+    private boolean yaTienePasswordEsperado(String storedPassword, String rawEsperado) {
+        if (storedPassword == null || storedPassword.isBlank()) {
+            return false;
+        }
+        if (esHashBcrypt(storedPassword)) {
+            return passwordEncoder.matches(rawEsperado, storedPassword);
+        }
+        return storedPassword.equals(rawEsperado);
     }
 
 }

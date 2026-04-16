@@ -50,15 +50,13 @@ public class MascotaServiceImpl implements MascotaService {
         if (tipo == null || tipo.isBlank()) {
             throw new IllegalArgumentException("El campo tipo es obligatorio");
         }
-        if (raza == null || raza.isBlank()) {
-            throw new IllegalArgumentException("El campo raza es obligatorio");
-        }
         if (usernameAutenticado == null || usernameAutenticado.isBlank()) {
             throw new IllegalArgumentException("No hay usuario autenticado");
         }
         if (foto == null || foto.isEmpty()) {
             throw new IllegalArgumentException("La foto es obligatoria");
         }
+        validarArchivoImagen(foto);
         
         Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
@@ -68,7 +66,7 @@ public class MascotaServiceImpl implements MascotaService {
         Mascota mascota = new Mascota();
         mascota.setNombre(nombre.trim());
         mascota.setTipo(tipo.trim());
-        mascota.setRaza(raza.trim());
+        mascota.setRaza(raza != null ? raza.trim() : "");
         mascota.setFotoUrl(fotoUrl);
         mascota.setUsuario(usuario);
         
@@ -98,6 +96,21 @@ public class MascotaServiceImpl implements MascotaService {
             return destino.toString();
         } catch (IOException e) {
             throw new RuntimeException("No se pudo guardar la foto de la mascota");
+        }
+    }
+
+    private void validarArchivoImagen(MultipartFile foto) {
+        String contentType = foto.getContentType() != null ? foto.getContentType().toLowerCase() : "";
+        if (!(contentType.equals("image/jpeg")
+                || contentType.equals("image/jpg")
+                || contentType.equals("image/png")
+                || contentType.equals("image/webp"))) {
+            throw new IllegalArgumentException("La foto debe ser JPG, PNG o WEBP");
+        }
+
+        long maxBytes = 5L * 1024L * 1024L;
+        if (foto.getSize() > maxBytes) {
+            throw new IllegalArgumentException("La foto no debe superar 5MB");
         }
     }
 }
