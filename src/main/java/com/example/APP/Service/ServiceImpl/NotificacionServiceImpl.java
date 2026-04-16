@@ -12,7 +12,10 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -86,6 +89,57 @@ public class NotificacionServiceImpl implements NotificacionService {
     }
 
     @Override
+    public List<Map<String, Object>> listarUsuariosParaNotificaciones(String search) {
+        String filtro = search != null ? search.trim().toLowerCase() : "";
+        return usuarioRepository.findAll().stream()
+                .filter(usuario -> filtro.isBlank()
+                        || (usuario.getNombre() != null && usuario.getNombre().toLowerCase().contains(filtro))
+                        || (usuario.getUsuario() != null && usuario.getUsuario().toLowerCase().contains(filtro)))
+                .sorted(Comparator
+                        .comparing(Usuario::getTorre, Comparator.nullsLast(String::compareToIgnoreCase))
+                        .thenComparing(Usuario::getApartamento, Comparator.nullsLast(String::compareToIgnoreCase))
+                        .thenComparing(Usuario::getNombre, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .map(this::mapearUsuarioResumen)
+                .toList();
+    }
+
+    @Override
+    public List<Notificacion> enviarNotificacionRecibo(Map<String, Object> payload) {
+        String mensaje = extraerTexto(payload, "mensaje");
+        if (mensaje == null || mensaje.isBlank()) {
+            throw new IllegalArgumentException("El campo mensaje es obligatorio");
+        }
+
+        Object usuarioIdObj = payload.get("usuarioId");
+        List<Usuario> destinatarios;
+        if (usuarioIdObj == null || usuarioIdObj.toString().isBlank() || "todos".equalsIgnoreCase(usuarioIdObj.toString())) {
+            destinatarios = usuarioRepository.findAll();
+        } else {
+            Long usuarioId;
+            try {
+                usuarioId = Long.parseLong(usuarioIdObj.toString());
+            } catch (NumberFormatException ex) {
+                throw new IllegalArgumentException("usuarioId inválido");
+            }
+            Usuario usuario = usuarioRepository.findById(usuarioId)
+                    .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+            destinatarios = List.of(usuario);
+        }
+
+        List<Notificacion> creadas = new ArrayList<>();
+        for (Usuario usuario : destinatarios) {
+            Notificacion notificacion = new Notificacion();
+            notificacion.setUsuario(usuario);
+            notificacion.setMensaje(mensaje.trim());
+            notificacion.setFechaEnvio(LocalDateTime.now());
+            notificacion.setImagenUrl(extraerTexto(payload, "imagenUrl"));
+            notificacion.setVideoUrl(extraerTexto(payload, "videoUrl"));
+            creadas.add(notificacionRepository.save(notificacion));
+        }
+        return creadas;
+    }
+
+    @Override
     public void eliminar(Long id) {
         notificacionRepository.deleteById(id);
     }
@@ -132,5 +186,21 @@ public class NotificacionServiceImpl implements NotificacionService {
         boolean tieneRecibo = mensaje.contains("recibo");
         boolean tieneTipo = mensaje.contains("enel") || mensaje.contains("vanti") || mensaje.contains("epz");
         return tieneRecibo && tieneTipo;
+    }
+
+    private Map<String, Object> mapearUsuarioResumen(Usuario usuario) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", usuario.getId());
+        item.put("nombre", usuario.getNombre());
+        item.put("username", usuario.getUsuario());
+        item.put("rol", usuario.getRol());
+        item.put("torre", usuario.getTorre());
+        item.put("apartamento", usuario.getApartamento());
+        return item;
+    }
+
+    private String extraerTexto(Map<String, Object> payload, String key) {
+        Object value = payload.get(key);
+        return value != null ? value.toString() : null;
     }
 }

@@ -137,17 +137,28 @@ public class AccesoController {
 
     private Map<String, Object> mapearAcceso(Object acceso, String tipoAcceso) {
         BeanWrapperImpl bean = new BeanWrapperImpl(acceso);
+        Object autorizadoPor = leerPropiedad(bean, "autorizadoPor");
+        String torre = valorTextoPreferido(
+                leerPropiedad(bean, "torre"),
+                autorizadoPor instanceof Usuario ? ((Usuario) autorizadoPor).getTorre() : null
+        );
+        String apartamento = valorTextoPreferido(
+                leerPropiedad(bean, "apartamento"),
+                autorizadoPor instanceof Usuario ? ((Usuario) autorizadoPor).getApartamento() : null
+        );
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("id", leerPropiedad(bean, "id"));
         item.put("tipoAcceso", tipoAcceso);
         item.put("nombreVisitante", leerPropiedad(bean, "nombreVisitante"));
         item.put("placaVehiculo", leerPropiedad(bean, "placaVehiculo"));
         item.put("codigoQr", leerPropiedad(bean, "codigoQr"));
-        item.put("torre", leerPropiedad(bean, "torre"));
-        item.put("apartamento", leerPropiedad(bean, "apartamento"));
+        item.put("torre", torre);
+        item.put("apartamento", apartamento);
         item.put("horaAutorizada", leerPropiedad(bean, "horaAutorizada"));
         item.put("horaEntrada", leerPropiedad(bean, "horaEntrada"));
         item.put("horaSalida", leerPropiedad(bean, "horaSalida"));
+        item.put("visitante", leerPropiedad(bean, "visitante"));
+        item.put("autorizadoPor", leerPropiedad(bean, "autorizadoPor"));
         return item;
     }
     
@@ -181,7 +192,13 @@ public class AccesoController {
         if (codigoQr.isBlank()) {
             codigoQr = construirPayloadDesdeAcceso(acceso);
         }
+        if (codigoQr == null || codigoQr.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se pudo construir el contenido del QR");
+        }
         String base64 = generarQrBase64(codigoQr);
+        if (base64 == null || base64.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "No se pudo generar la imagen QR");
+        }
         Map<String, Object> respuesta = new LinkedHashMap<>();
         respuesta.put("id", acceso.get("id"));
         respuesta.put("tipoAcceso", acceso.get("tipoAcceso"));
@@ -195,8 +212,8 @@ public class AccesoController {
         String tipo = acceso.get("tipoAcceso") != null ? acceso.get("tipoAcceso").toString() : "ACCESO";
         String nombre = acceso.get("nombreVisitante") != null ? acceso.get("nombreVisitante").toString() : "";
         String placa = acceso.get("placaVehiculo") != null ? acceso.get("placaVehiculo").toString() : "";
-        String torre = acceso.get("torre") != null ? acceso.get("torre").toString() : "";
-        String apartamento = acceso.get("apartamento") != null ? acceso.get("apartamento").toString() : "";
+        String torre = acceso.get("torre") != null ? acceso.get("torre").toString().trim() : "";
+        String apartamento = acceso.get("apartamento") != null ? acceso.get("apartamento").toString().trim() : "";
         return tipo + "|" + nombre + "|" + placa + "|" + torre + "|" + apartamento + "|" + System.currentTimeMillis();
     }
     
@@ -212,5 +229,13 @@ public class AccesoController {
         } catch (WriterException | java.io.IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "No se pudo generar el QR");
         }
+    }
+
+    private String valorTextoPreferido(Object principal, String fallback) {
+        String valorPrincipal = principal != null ? principal.toString().trim() : "";
+        if (!valorPrincipal.isBlank()) {
+            return valorPrincipal;
+        }
+        return fallback != null ? fallback.trim() : "";
     }
 }

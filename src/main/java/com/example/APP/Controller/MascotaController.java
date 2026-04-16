@@ -87,6 +87,16 @@ public class MascotaController {
     public void eliminar(@PathVariable Long id) {
         mascotaService.eliminar(id);
     }
+
+    @DeleteMapping("/publicaciones/{id}")
+    public ResponseEntity<Map<String, Object>> eliminarPublicacion(@PathVariable Long id) {
+        mascotaService.eliminar(id);
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("ok", true);
+        resp.put("mensaje", "Publicación eliminada correctamente");
+        resp.put("idMascota", id);
+        return ResponseEntity.ok(resp);
+    }
     
     @GetMapping("/{id}/foto")
     public ResponseEntity<Resource> obtenerFoto(@PathVariable Long id) {

@@ -7,9 +7,13 @@ import com.example.APP.Model.Usuario;
 import com.example.APP.Security.CustomUserDetailsService;
 import com.example.APP.Security.JwtService;
 import com.example.APP.Service.UsuarioService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,9 +39,27 @@ public class UsuarioController {
     }
 
     @GetMapping
-    public List<UsuarioResponseDto> obtenerTodos() {
+    public List<UsuarioResponseDto> obtenerTodos(@RequestParam(name = "search", required = false) String search) {
+        String filtro = search != null ? search.trim().toLowerCase() : "";
         return usuarioService.obtenerTodos()
                 .stream()
+                .filter(usuario -> filtro.isBlank()
+                        || (usuario.getNombre() != null && usuario.getNombre().toLowerCase().contains(filtro))
+                        || (usuario.getUsuario() != null && usuario.getUsuario().toLowerCase().contains(filtro)))
+                .sorted(Comparator.comparing(Usuario::getNombre, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .map(UsuarioResponseDto::fromEntity)
+                .collect(Collectors.toList());
+    }
+
+    @GetMapping("/mensajeria")
+    public List<UsuarioResponseDto> obtenerUsuariosMensajeria(@RequestParam(name = "search", required = false) String search) {
+        String filtro = search != null ? search.trim().toLowerCase() : "";
+        return usuarioService.obtenerTodos().stream()
+                .filter(u -> u.getRol() == Usuario.Rol.ADMINISTRADOR || u.getRol() == Usuario.Rol.CELADOR)
+                .filter(u -> filtro.isBlank()
+                        || (u.getNombre() != null && u.getNombre().toLowerCase().contains(filtro))
+                        || (u.getUsuario() != null && u.getUsuario().toLowerCase().contains(filtro)))
+                .sorted(Comparator.comparing(Usuario::getNombre, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .map(UsuarioResponseDto::fromEntity)
                 .collect(Collectors.toList());
     }
@@ -87,6 +109,35 @@ public class UsuarioController {
         );
 
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Map<String, Object>> logout(Authentication authentication) {
+        SecurityContextHolder.clearContext();
+        Map<String, Object> response = new HashMap<>();
+        response.put("ok", true);
+        response.put("status", HttpStatus.OK.value());
+        response.put("mensaje", "Sesión cerrada correctamente");
+        response.put("usuario", authentication != null ? authentication.getName() : null);
+        response.put("accionRecomendada", "Eliminar token del cliente");
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/perfil")
+    public ResponseEntity<Map<String, Object>> perfil(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        Usuario usuario = usuarioService.obtenerPorUsuario(authentication.getName());
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("id", usuario.getId());
+        resp.put("nombre", usuario.getNombre());
+        resp.put("username", usuario.getUsuario());
+        resp.put("rol", usuario.getRol());
+        resp.put("torre", usuario.getTorre());
+        resp.put("apartamento", usuario.getApartamento());
+        resp.put("passwordMasked", "****");
+        return ResponseEntity.ok(resp);
     }
 }
 

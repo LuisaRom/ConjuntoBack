@@ -26,6 +26,20 @@ public class QuejaController {
     }
     
     @GetMapping("/todas")
+    public List<Queja> obtenerTodasComoLista(
+            @RequestParam(name = "categoria", required = false) String categoria
+    ) {
+        if (categoria == null || categoria.isBlank()) {
+            return quejaService.obtenerTodos();
+        }
+        return quejaService.obtenerTodasAgrupadasPorCategoria(categoria)
+                .values()
+                .stream()
+                .findFirst()
+                .orElse(List.of());
+    }
+
+    @GetMapping("/agrupadas")
     public Map<String, List<Queja>> obtenerTodasAgrupadasPorCategoria(
             @RequestParam(name = "categoria", required = false) String categoria
     ) {

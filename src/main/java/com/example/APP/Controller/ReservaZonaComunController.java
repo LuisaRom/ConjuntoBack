@@ -49,6 +49,13 @@ public class ReservaZonaComunController {
                 .collect(Collectors.toList());
     }
 
+    @GetMapping("/resumen")
+    public List<Map<String, Object>> obtenerResumenReservas() {
+        return reservaZonaComunService.obtenerTodos().stream()
+                .map(this::mapearReservaResumen)
+                .collect(Collectors.toList());
+    }
+
     private boolean esDeResidente(ReservaZonaComun reserva) {
         BeanWrapperImpl beanReserva = new BeanWrapperImpl(reserva);
         if (!beanReserva.isReadableProperty("usuario")) {
@@ -127,6 +134,26 @@ public class ReservaZonaComunController {
         return reservaZonaComunService.obtenerPorId(id);
     }
 
+    @GetMapping("/{id}/detalle")
+    public ResponseEntity<?> obtenerDetalle(@PathVariable Long id) {
+        return reservaZonaComunService.obtenerPorId(id)
+                .map(reserva -> ResponseEntity.ok(mapearReservaDetalle(reserva)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/horarios-disponibles")
+    public ResponseEntity<?> obtenerHorariosDisponibles(
+            @RequestParam String zonaComun,
+            @RequestParam LocalDate fechaReserva,
+            @RequestParam(required = false) Long usuarioId
+    ) {
+        try {
+            return ResponseEntity.ok(reservaZonaComunService.obtenerHorariosDisponibles(zonaComun, fechaReserva, usuarioId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @GetMapping("/salon-comunal/disponibilidad")
     public ResponseEntity<?> consultarDisponibilidadSalonComunal(
             @RequestParam LocalDate fechaReserva,
@@ -194,5 +221,30 @@ public class ReservaZonaComunController {
     @DeleteMapping("/{id}")
     public void eliminar(@PathVariable Long id) {
         reservaZonaComunService.eliminar(id);
+    }
+
+    private Map<String, Object> mapearReservaResumen(ReservaZonaComun reserva) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", reserva.getId());
+        item.put("zonaComun", reserva.getZonaComun());
+        item.put("fechaReserva", reserva.getFechaReserva());
+        item.put("horaInicio", reserva.getHoraInicio());
+        item.put("horaFin", reserva.getHoraFin());
+        item.put("usuario", reserva.getUsuario() != null ? reserva.getUsuario().getNombre() : null);
+        item.put("torre", reserva.getUsuario() != null ? reserva.getUsuario().getTorre() : null);
+        item.put("apartamento", reserva.getUsuario() != null ? reserva.getUsuario().getApartamento() : null);
+        return item;
+    }
+
+    private Map<String, Object> mapearReservaDetalle(ReservaZonaComun reserva) {
+        Map<String, Object> detalle = new LinkedHashMap<>();
+        detalle.put("id", reserva.getId());
+        detalle.put("zonaComun", reserva.getZonaComun());
+        detalle.put("fechaReserva", reserva.getFechaReserva());
+        detalle.put("horaInicio", reserva.getHoraInicio());
+        detalle.put("horaFin", reserva.getHoraFin());
+        detalle.put("serviciosAdicionales", reserva.getServiciosAdicionales());
+        detalle.put("usuario", reserva.getUsuario());
+        return detalle;
     }
 }
