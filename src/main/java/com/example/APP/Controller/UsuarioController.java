@@ -13,6 +13,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.text.Normalizer;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -52,13 +53,15 @@ public class UsuarioController {
     }
 
     @GetMapping("/mensajeria")
-    public List<UsuarioResponseDto> obtenerUsuariosMensajeria(@RequestParam(name = "search", required = false) String search) {
-        String filtro = search != null ? search.trim().toLowerCase() : "";
+    public List<UsuarioResponseDto> obtenerUsuariosMensajeria(
+            @RequestParam(name = "search", required = false) String search,
+            @RequestParam(name = "rol", required = false, defaultValue = "CELADOR") String rol
+    ) {
+        String filtro = normalizarTexto(search);
+        String rolSolicitado = normalizarTexto(rol);
         return usuarioService.obtenerTodos().stream()
-                .filter(u -> u.getRol() == Usuario.Rol.ADMINISTRADOR || u.getRol() == Usuario.Rol.CELADOR)
-                .filter(u -> filtro.isBlank()
-                        || (u.getNombre() != null && u.getNombre().toLowerCase().contains(filtro))
-                        || (u.getUsuario() != null && u.getUsuario().toLowerCase().contains(filtro)))
+                .filter(u -> coincideRolMensajeria(u, rolSolicitado))
+                .filter(u -> filtro.isBlank() || coincideFiltroMensajeria(u, filtro))
                 .sorted(Comparator.comparing(Usuario::getNombre, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .map(UsuarioResponseDto::fromEntity)
                 .collect(Collectors.toList());
@@ -138,6 +141,33 @@ public class UsuarioController {
         resp.put("apartamento", usuario.getApartamento());
         resp.put("passwordMasked", "****");
         return ResponseEntity.ok(resp);
+    }
+
+    private boolean coincideRolMensajeria(Usuario usuario, String rolSolicitado) {
+        if (usuario == null || usuario.getRol() == null) {
+            return false;
+        }
+        if ("TODOS".equals(rolSolicitado)) {
+            return usuario.getRol() == Usuario.Rol.ADMINISTRADOR || usuario.getRol() == Usuario.Rol.CELADOR;
+        }
+        return switch (rolSolicitado) {
+            case "ADMINISTRADOR" -> usuario.getRol() == Usuario.Rol.ADMINISTRADOR;
+            case "CELADOR" -> usuario.getRol() == Usuario.Rol.CELADOR;
+            default -> usuario.getRol() == Usuario.Rol.CELADOR;
+        };
+    }
+
+    private boolean coincideFiltroMensajeria(Usuario usuario, String filtro) {
+        return normalizarTexto(usuario.getNombre()).contains(filtro)
+                || normalizarTexto(usuario.getUsuario()).contains(filtro);
+    }
+
+    private String normalizarTexto(String texto) {
+        if (texto == null || texto.isBlank()) {
+            return "";
+        }
+        String textoNormalizado = Normalizer.normalize(texto.trim(), Normalizer.Form.NFD);
+        return textoNormalizado.replaceAll("\\p{M}", "").toLowerCase();
     }
 }
 
