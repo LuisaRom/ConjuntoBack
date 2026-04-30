@@ -20,11 +20,25 @@ public class PagoAdministracion {
     @Enumerated(EnumType.STRING)
     private MetodoPago metodoPago;
 
+    @Enumerated(EnumType.STRING)
+    private EstadoPago estadoPago;
+
+    private String concepto;
+    private String periodo;
+    private String referenciaExterna;
+    private String mercadoPagoPreferenceId;
+    private String mercadoPagoPaymentId;
+    private String checkoutUrl;
+
     @ManyToOne
     @JoinColumn(name = "usuario_id")
     private Usuario usuario;
 
     public enum MetodoPago {
-        PSE, EFECTIVO
+        EN_LINEA, EFECTIVO
+    }
+
+    public enum EstadoPago {
+        PENDIENTE, APROBADO, RECHAZADO
     }
 }

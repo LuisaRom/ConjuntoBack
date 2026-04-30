@@ -46,6 +46,7 @@ public class SecurityConfig {
                                 "/v3/api-docs/**"
                         ).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/usuarios/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/pagos/mercadopago/webhook").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/usuarios/crear").hasRole("ADMINISTRADOR")
                         .requestMatchers("/api/usuarios/**").hasRole("ADMINISTRADOR")
                         .requestMatchers(HttpMethod.POST, "/api/quejas/crear").hasRole("RESIDENTE")

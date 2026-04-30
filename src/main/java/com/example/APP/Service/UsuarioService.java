@@ -12,6 +12,8 @@ public interface UsuarioService {
     Optional<Usuario> obtenerPorId(Long id);
     Usuario guardar(Usuario usuario);
     Usuario crearUsuario(Map<String, Object> payload);
+    Usuario resetearPasswordPorId(Long id, String nuevaPassword);
+    Usuario resetearPasswordPorUsuario(String usuario, String nuevaPassword);
     void eliminar(Long id);
     Usuario login(String usuario, String password);
     Usuario obtenerPorUsuario(String usuario);

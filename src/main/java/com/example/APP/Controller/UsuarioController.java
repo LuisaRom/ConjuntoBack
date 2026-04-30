@@ -87,6 +87,28 @@ public class UsuarioController {
         return ResponseEntity.status(201).body(UsuarioResponseDto.fromEntity(creado));
     }
 
+    @PostMapping("/reset-password")
+    public ResponseEntity<UsuarioResponseDto> resetearPassword(@RequestBody Map<String, Object> payload) {
+        String nuevaPassword = payload.get("nuevaPassword") != null ? payload.get("nuevaPassword").toString() : null;
+        Usuario actualizado;
+
+        if (payload.get("id") != null) {
+            Long id;
+            try {
+                id = Long.parseLong(payload.get("id").toString());
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("El campo 'id' debe ser numérico");
+            }
+            actualizado = usuarioService.resetearPasswordPorId(id, nuevaPassword);
+        } else if (payload.get("usuario") != null) {
+            actualizado = usuarioService.resetearPasswordPorUsuario(payload.get("usuario").toString(), nuevaPassword);
+        } else {
+            throw new IllegalArgumentException("Debes enviar 'id' o 'usuario' para resetear la contraseña");
+        }
+
+        return ResponseEntity.ok(UsuarioResponseDto.fromEntity(actualizado));
+    }
+
     @DeleteMapping("/{id}")
     public void eliminar(@PathVariable Long id) {
         usuarioService.eliminar(id);

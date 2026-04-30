@@ -3,9 +3,7 @@ package com.example.APP.Service.ServiceImpl;
 import com.example.APP.Model.Usuario;
 import com.example.APP.Repository.UsuarioRepository;
 import com.example.APP.Service.UsuarioService;
-import jakarta.annotation.PostConstruct;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -16,30 +14,9 @@ import java.util.Optional;
 public class UsuarioServiceImpl implements UsuarioService {
 
     private final UsuarioRepository usuarioRepository;
-    private final PasswordEncoder passwordEncoder;
 
-    public UsuarioServiceImpl(UsuarioRepository usuarioRepository, PasswordEncoder passwordEncoder) {
+    public UsuarioServiceImpl(UsuarioRepository usuarioRepository) {
         this.usuarioRepository = usuarioRepository;
-        this.passwordEncoder = passwordEncoder;
-    }
-
-    @PostConstruct
-    public void normalizarPasswordsUsuariosExistentes() {
-        List<Usuario> usuarios = usuarioRepository.findAll();
-        boolean huboCambios = false;
-
-        for (Usuario usuario : usuarios) {
-            String passwordEsperado = passwordPorRol(usuario.getRol());
-            if (passwordEsperado == null || yaTienePasswordEsperado(usuario.getPassword(), passwordEsperado)) {
-                continue;
-            }
-            usuario.setPassword(passwordEncoder.encode(passwordEsperado));
-            huboCambios = true;
-        }
-
-        if (huboCambios) {
-            usuarioRepository.saveAll(usuarios);
-        }
     }
 
     @Override
@@ -57,7 +34,7 @@ public class UsuarioServiceImpl implements UsuarioService {
         if (usuario.getPassword() == null || usuario.getPassword().isBlank()) {
             throw new IllegalArgumentException("El campo 'password' es obligatorio");
         }
-        usuario.setPassword(codificarPasswordSiHaceFalta(usuario.getPassword()));
+        usuario.setPassword(usuario.getPassword().trim());
         return usuarioRepository.save(usuario);
     }
     
@@ -108,9 +85,34 @@ public class UsuarioServiceImpl implements UsuarioService {
         nuevoUsuario.setRol(rol);
         nuevoUsuario.setApartamento(apartamento != null ? apartamento.trim() : "");
         nuevoUsuario.setTorre(torre != null ? torre.trim() : "");
-        nuevoUsuario.setPassword(codificarPasswordSiHaceFalta(password));
+        nuevoUsuario.setPassword(password.trim());
 
         return usuarioRepository.save(nuevoUsuario);
+    }
+
+    @Override
+    public Usuario resetearPasswordPorId(Long id, String nuevaPassword) {
+        if (nuevaPassword == null || nuevaPassword.trim().isEmpty()) {
+            throw new IllegalArgumentException("El campo 'nuevaPassword' es obligatorio");
+        }
+        Usuario usuario = usuarioRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        usuario.setPassword(nuevaPassword.trim());
+        return usuarioRepository.save(usuario);
+    }
+
+    @Override
+    public Usuario resetearPasswordPorUsuario(String usuario, String nuevaPassword) {
+        if (usuario == null || usuario.trim().isEmpty()) {
+            throw new IllegalArgumentException("El campo 'usuario' es obligatorio");
+        }
+        if (nuevaPassword == null || nuevaPassword.trim().isEmpty()) {
+            throw new IllegalArgumentException("El campo 'nuevaPassword' es obligatorio");
+        }
+        Usuario usuarioExistente = usuarioRepository.findByUsuario(usuario.trim())
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        usuarioExistente.setPassword(nuevaPassword.trim());
+        return usuarioRepository.save(usuarioExistente);
     }
 
     @Override
@@ -129,20 +131,11 @@ public class UsuarioServiceImpl implements UsuarioService {
             throw new BadCredentialsException("Usuario o contraseña incorrectos");
         }
 
-        // Compatibilidad controlada: si el password estaba en plano, migrarlo al hash al primer login exitoso.
-        if (esHashBcrypt(storedPassword)) {
-            if (!passwordEncoder.matches(password, storedPassword)) {
-                throw new BadCredentialsException("Usuario o contraseña incorrectos");
-            }
-            return user;
-        }
-
         if (!storedPassword.equals(password)) {
             throw new BadCredentialsException("Usuario o contraseña incorrectos");
         }
 
-        user.setPassword(codificarPasswordSiHaceFalta(password));
-        return usuarioRepository.save(user);
+        return user;
     }
 
     @Override
@@ -160,36 +153,6 @@ public class UsuarioServiceImpl implements UsuarioService {
         if (valor == null || valor.trim().isEmpty()) {
             throw new IllegalArgumentException("El campo '" + nombreCampo + "' es obligatorio");
         }
-    }
-
-    private String codificarPasswordSiHaceFalta(String rawPassword) {
-        String trimmed = rawPassword.trim();
-        return esHashBcrypt(trimmed) ? trimmed : passwordEncoder.encode(trimmed);
-    }
-
-    private boolean esHashBcrypt(String value) {
-        return value.startsWith("$2a$") || value.startsWith("$2b$") || value.startsWith("$2y$");
-    }
-
-    private String passwordPorRol(Usuario.Rol rol) {
-        if (rol == null) {
-            return null;
-        }
-        return switch (rol) {
-            case ADMINISTRADOR -> "admin123";
-            case RESIDENTE -> "residente123";
-            case CELADOR -> "celador123";
-        };
-    }
-
-    private boolean yaTienePasswordEsperado(String storedPassword, String rawEsperado) {
-        if (storedPassword == null || storedPassword.isBlank()) {
-            return false;
-        }
-        if (esHashBcrypt(storedPassword)) {
-            return passwordEncoder.matches(rawEsperado, storedPassword);
-        }
-        return storedPassword.equals(rawEsperado);
     }
 
 }
