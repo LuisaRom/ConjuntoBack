@@ -45,6 +45,10 @@ public class AppApplication {
 		setPropertyFromDotenv(dotenv, "DB_URL", "spring.datasource.url");
 		setPropertyFromDotenv(dotenv, "DB_USERNAME", "spring.datasource.username");
 		setPropertyFromDotenv(dotenv, "DB_PASSWORD", "spring.datasource.password");
+		setPropertyFromDotenv(dotenv, "JWT_SECRET", "app.security.jwt-secret");
+		setPropertyFromDotenv(dotenv, "MERCADOPAGO_ACCESS_TOKEN", "mercadopago.access-token");
+		setPropertyFromDotenv(dotenv, "FRONTEND_BASE_URL", "app.frontend.base-url");
+		setPropertyFromDotenv(dotenv, "BACKEND_BASE_URL", "app.backend.base-url");
 
 		// Fallback para Hibernate (evita error "Unable to determine Dialect" durante debug)
 		if (System.getProperty("spring.jpa.database-platform") == null) {
