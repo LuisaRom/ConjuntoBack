@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.text.Normalizer;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -64,6 +65,15 @@ public class UsuarioController {
                 .filter(u -> filtro.isBlank() || coincideFiltroMensajeria(u, filtro))
                 .sorted(Comparator.comparing(Usuario::getNombre, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .map(UsuarioResponseDto::fromEntity)
+                .collect(Collectors.toList());
+    }
+
+    @GetMapping("/residentes")
+    public List<Map<String, Object>> obtenerResidentes() {
+        return usuarioService.obtenerTodos().stream()
+                .filter(u -> u != null && u.getRol() == Usuario.Rol.RESIDENTE)
+                .sorted(Comparator.comparing(Usuario::getNombre, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .map(this::mapearResidente)
                 .collect(Collectors.toList());
     }
 
@@ -190,6 +200,16 @@ public class UsuarioController {
         }
         String textoNormalizado = Normalizer.normalize(texto.trim(), Normalizer.Form.NFD);
         return textoNormalizado.replaceAll("\\p{M}", "").toLowerCase();
+    }
+
+    private Map<String, Object> mapearResidente(Usuario usuario) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", usuario.getId());
+        item.put("nombre", usuario.getNombre());
+        item.put("torre", usuario.getTorre());
+        item.put("apartamento", usuario.getApartamento());
+        item.put("usuario", usuario.getUsuario());
+        return item;
     }
 }
 

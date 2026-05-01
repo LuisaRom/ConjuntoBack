@@ -3,6 +3,7 @@ package com.example.APP.Controller;
 import com.example.APP.Model.PagoAdministracion;
 import com.example.APP.Service.PagoAdministracionService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -35,6 +36,19 @@ public class PagoAdministracionController {
     @PreAuthorize("hasRole('ADMINISTRADOR')")
     public List<Map<String, Object>> listarPagosAdmin(Authentication authentication) {
         return pagoAdministracionService.listarPagosAdmin();
+    }
+
+    @GetMapping("/admin/estado-pagos")
+    @PreAuthorize("hasRole('ADMINISTRADOR')")
+    public ResponseEntity<?> listarEstadoPagosAdmin() {
+        try {
+            return ResponseEntity.ok(pagoAdministracionService.listarPagosAdmin());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("No fue posible consultar el estado de pagos en este momento");
+        }
     }
 
     @GetMapping("/{id}")

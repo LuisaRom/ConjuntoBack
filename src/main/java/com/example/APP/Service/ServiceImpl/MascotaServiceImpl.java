@@ -53,15 +53,17 @@ public class MascotaServiceImpl implements MascotaService {
         if (usernameAutenticado == null || usernameAutenticado.isBlank()) {
             throw new IllegalArgumentException("No hay usuario autenticado");
         }
-        if (foto == null || foto.isEmpty()) {
-            throw new IllegalArgumentException("La foto es obligatoria");
+        if (foto != null && !foto.isEmpty()) {
+            validarArchivoImagen(foto);
         }
-        validarArchivoImagen(foto);
         
         Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
         
-        String fotoUrl = guardarFoto(foto);
+        String fotoUrl = null;
+        if (foto != null && !foto.isEmpty()) {
+            fotoUrl = guardarFoto(foto);
+        }
         
         Mascota mascota = new Mascota();
         mascota.setNombre(nombre.trim());

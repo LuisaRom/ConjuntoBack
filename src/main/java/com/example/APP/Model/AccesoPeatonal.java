@@ -3,6 +3,7 @@ package com.example.APP.Model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -30,4 +31,5 @@ public class AccesoPeatonal {
     private LocalDateTime horaAutorizada;
     private LocalDateTime horaEntrada;
     private LocalDateTime horaSalida;
+    private LocalDate fecha;
 }

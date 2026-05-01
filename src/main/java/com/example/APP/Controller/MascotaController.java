@@ -78,8 +78,14 @@ public class MascotaController {
         } catch (IllegalArgumentException e) {
             log.warn("Error 400 al crear mascota. usuario={}, nombre='{}', tipo='{}', raza='{}', fotoPresente={}, motivo={}",
                     authentication != null ? authentication.getName() : "anon",
-                    nombre, tipo, raza, foto != null && !foto.isEmpty(), e.getMessage());
+                    nombre, tipo, raza, foto != null && !foto.isEmpty(), e.getMessage(), e);
             return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            log.error("Error inesperado al crear mascota. usuario={}, nombre='{}', tipo='{}', raza='{}', fotoPresente={}",
+                    authentication != null ? authentication.getName() : "anon",
+                    nombre, tipo, raza, foto != null && !foto.isEmpty(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("No se pudo crear la publicación de mascota");
         }
     }
 
