@@ -55,8 +55,11 @@ public class MascotaController {
     
     @PostMapping(value = "/crear", consumes = {"multipart/form-data"})
     public ResponseEntity<?> crear(
-            @RequestParam("nombre") String nombre,
-            @RequestParam("tipo") String tipo,
+            @RequestParam(value = "nombre", required = false) String nombre,
+            @RequestParam(value = "nombreMascota", required = false) String nombreMascota,
+            @RequestParam(value = "tipo", required = false) String tipo,
+            @RequestParam(value = "tipoMascota", required = false) String tipoMascota,
+            @RequestParam(value = "descripcion", required = false) String descripcion,
             @RequestParam(value = "raza", required = false) String raza,
             @RequestParam(value = "foto", required = false) MultipartFile foto,
             Authentication authentication
@@ -65,11 +68,14 @@ public class MascotaController {
             if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
                 throw new IllegalArgumentException("No hay usuario autenticado");
             }
-            Mascota creada = mascotaService.crearMascota(nombre, tipo, raza, authentication.getName(), foto);
+            String nombreFinal = (nombreMascota != null && !nombreMascota.isBlank()) ? nombreMascota : nombre;
+            String tipoFinal = (tipoMascota != null && !tipoMascota.isBlank()) ? tipoMascota : tipo;
+            Mascota creada = mascotaService.crearMascota(nombreFinal, tipoFinal, descripcion, raza, authentication.getName(), foto);
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("id", creada.getId());
             resp.put("nombre", creada.getNombre());
             resp.put("tipo", creada.getTipo());
+            resp.put("descripcion", creada.getDescripcion());
             resp.put("raza", creada.getRaza());
             resp.put("fotoUrl", creada.getFotoUrl());
             resp.put("fotoHttpUrl", "/api/mascotas/" + creada.getId() + "/foto");

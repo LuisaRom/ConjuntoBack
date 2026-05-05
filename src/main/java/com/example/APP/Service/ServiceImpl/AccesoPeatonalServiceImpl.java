@@ -8,7 +8,6 @@ import com.example.APP.Service.AccesoPeatonalService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -34,14 +33,20 @@ public class AccesoPeatonalServiceImpl implements AccesoPeatonalService {
 
     @Override
     public AccesoPeatonal guardar(AccesoPeatonal accesoPeatonal) {
+        String nombreVisitante = textoSeguro(accesoPeatonal.getNombreVisitante());
+        if (nombreVisitante.isBlank()) {
+            throw new IllegalArgumentException("El campo 'nombreVisitante' es obligatorio");
+        }
+        accesoPeatonal.setNombreVisitante(nombreVisitante);
+
+        if (accesoPeatonal.getFecha() == null) {
+            throw new IllegalArgumentException("El campo 'fecha' es obligatorio");
+        }
         if (accesoPeatonal.getHoraAutorizada() == null) {
             accesoPeatonal.setHoraAutorizada(LocalDateTime.now());
         }
-        if (accesoPeatonal.getFecha() == null) {
-            accesoPeatonal.setFecha(LocalDate.now());
-        }
         if (accesoPeatonal.getCodigoQr() == null || accesoPeatonal.getCodigoQr().isBlank()) {
-            String nombre = accesoPeatonal.getNombreVisitante() != null ? accesoPeatonal.getNombreVisitante().trim() : "VISITANTE";
+            String nombre = accesoPeatonal.getNombreVisitante();
             String torre = accesoPeatonal.getTorre() != null ? accesoPeatonal.getTorre().trim() : "";
             String apartamento = accesoPeatonal.getApartamento() != null ? accesoPeatonal.getApartamento().trim() : "";
             accesoPeatonal.setCodigoQr("PEATONAL|" + nombre + "|" + torre + "|" + apartamento + "|" + System.currentTimeMillis());

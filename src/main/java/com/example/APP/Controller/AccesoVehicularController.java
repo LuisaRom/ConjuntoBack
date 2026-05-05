@@ -66,6 +66,9 @@ public class AccesoVehicularController {
         Map<String, Object> respuesta = new LinkedHashMap<>();
         respuesta.put("id", acceso.getId());
         respuesta.put("placaVehiculo", acceso.getPlacaVehiculo());
+        respuesta.put("tipoVehiculo", acceso.getTipoVehiculo());
+        respuesta.put("quienIngresa", acceso.getQuienIngresa());
+        respuesta.put("fecha", acceso.getFecha());
         respuesta.put("torre", acceso.getTorre());
         respuesta.put("apartamento", acceso.getApartamento());
         respuesta.put("horaAutorizada", acceso.getHoraAutorizada());

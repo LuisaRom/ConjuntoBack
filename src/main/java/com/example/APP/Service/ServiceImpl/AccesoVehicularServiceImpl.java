@@ -35,9 +35,25 @@ public class AccesoVehicularServiceImpl implements AccesoVehicularService {
     public AccesoVehicular guardar(AccesoVehicular accesoVehicular) {
         String placa = textoSeguro(accesoVehicular.getPlacaVehiculo()).toUpperCase();
         if (placa.isBlank()) {
-            throw new IllegalArgumentException("El campo 'placaVehiculo' es obligatorio");
+            throw new IllegalArgumentException("El campo 'placa' es obligatorio");
         }
         accesoVehicular.setPlacaVehiculo(placa);
+
+        String tipoVehiculo = textoSeguro(accesoVehicular.getTipoVehiculo());
+        if (tipoVehiculo.isBlank()) {
+            throw new IllegalArgumentException("El campo 'tipoVehiculo' es obligatorio");
+        }
+        accesoVehicular.setTipoVehiculo(tipoVehiculo);
+
+        String quienIngresa = textoSeguro(accesoVehicular.getQuienIngresa());
+        if (quienIngresa.isBlank()) {
+            throw new IllegalArgumentException("El campo 'quienIngresa' es obligatorio");
+        }
+        accesoVehicular.setQuienIngresa(quienIngresa);
+
+        if (accesoVehicular.getFecha() == null) {
+            throw new IllegalArgumentException("El campo 'fecha' es obligatorio");
+        }
 
         if (accesoVehicular.getHoraAutorizada() == null) {
             accesoVehicular.setHoraAutorizada(LocalDateTime.now());

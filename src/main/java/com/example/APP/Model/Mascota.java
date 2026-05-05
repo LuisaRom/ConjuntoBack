@@ -16,6 +16,7 @@ public class Mascota {
 
     private String nombre;
     private String tipo;
+    private String descripcion;
     private String raza;
     private String fotoUrl;
 
@@ -54,6 +55,14 @@ public class Mascota {
 
     public void setRaza(String raza) {
         this.raza = raza;
+    }
+
+    public String getDescripcion() {
+        return descripcion;
+    }
+
+    public void setDescripcion(String descripcion) {
+        this.descripcion = descripcion;
     }
 
     public String getFotoUrl() {

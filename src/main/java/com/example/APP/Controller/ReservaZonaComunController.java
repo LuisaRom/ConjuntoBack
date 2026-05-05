@@ -121,7 +121,10 @@ public class ReservaZonaComunController {
         item.put("fechaReserva", leerPropiedad(bean, "fechaReserva"));
         item.put("horaInicio", leerPropiedad(bean, "horaInicio"));
         item.put("horaFin", leerPropiedad(bean, "horaFin"));
-        item.put("usuario", leerPropiedad(bean, "usuario"));
+        Usuario usuario = reserva.getUsuario();
+        item.put("usuario", usuario != null ? mapearUsuarioResumen(usuario) : null);
+        item.put("torre", usuario != null ? usuario.getTorre() : null);
+        item.put("apartamento", usuario != null ? usuario.getApartamento() : null);
         return item;
     }
     
@@ -244,7 +247,17 @@ public class ReservaZonaComunController {
         detalle.put("horaInicio", reserva.getHoraInicio());
         detalle.put("horaFin", reserva.getHoraFin());
         detalle.put("serviciosAdicionales", reserva.getServiciosAdicionales());
-        detalle.put("usuario", reserva.getUsuario());
+        detalle.put("usuario", reserva.getUsuario() != null ? mapearUsuarioResumen(reserva.getUsuario()) : null);
+        detalle.put("torre", reserva.getUsuario() != null ? reserva.getUsuario().getTorre() : null);
+        detalle.put("apartamento", reserva.getUsuario() != null ? reserva.getUsuario().getApartamento() : null);
         return detalle;
+    }
+
+    private Map<String, Object> mapearUsuarioResumen(Usuario usuario) {
+        Map<String, Object> user = new LinkedHashMap<>();
+        user.put("id", usuario.getId());
+        user.put("nombre", usuario.getNombre());
+        user.put("usuario", usuario.getUsuario());
+        return user;
     }
 }

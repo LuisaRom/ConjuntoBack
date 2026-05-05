@@ -43,31 +43,33 @@ public class MascotaServiceImpl implements MascotaService {
     }
     
     @Override
-    public Mascota crearMascota(String nombre, String tipo, String raza, String usernameAutenticado, MultipartFile foto) {
+    public Mascota crearMascota(String nombre, String tipo, String descripcion, String raza, String usernameAutenticado, MultipartFile foto) {
         if (nombre == null || nombre.isBlank()) {
             throw new IllegalArgumentException("El campo nombre es obligatorio");
         }
         if (tipo == null || tipo.isBlank()) {
             throw new IllegalArgumentException("El campo tipo es obligatorio");
         }
+        if (descripcion == null || descripcion.isBlank()) {
+            throw new IllegalArgumentException("El campo descripcion es obligatorio");
+        }
         if (usernameAutenticado == null || usernameAutenticado.isBlank()) {
             throw new IllegalArgumentException("No hay usuario autenticado");
         }
-        if (foto != null && !foto.isEmpty()) {
-            validarArchivoImagen(foto);
+        if (foto == null || foto.isEmpty()) {
+            throw new IllegalArgumentException("La imagen es obligatoria");
         }
+        validarArchivoImagen(foto);
         
         Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
         
-        String fotoUrl = null;
-        if (foto != null && !foto.isEmpty()) {
-            fotoUrl = guardarFoto(foto);
-        }
+        String fotoUrl = guardarFoto(foto);
         
         Mascota mascota = new Mascota();
         mascota.setNombre(nombre.trim());
         mascota.setTipo(tipo.trim());
+        mascota.setDescripcion(descripcion.trim());
         mascota.setRaza(raza != null ? raza.trim() : "");
         mascota.setFotoUrl(fotoUrl);
         mascota.setUsuario(usuario);

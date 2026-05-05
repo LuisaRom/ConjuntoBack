@@ -70,8 +70,8 @@ public class UsuarioController {
 
     @GetMapping("/residentes")
     public List<Map<String, Object>> obtenerResidentes() {
-        return usuarioService.obtenerTodos().stream()
-                .filter(u -> u != null && u.getRol() == Usuario.Rol.RESIDENTE)
+        return usuarioService.obtenerResidentes().stream()
+                .filter(u -> u != null)
                 .sorted(Comparator.comparing(Usuario::getNombre, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .map(this::mapearResidente)
                 .collect(Collectors.toList());

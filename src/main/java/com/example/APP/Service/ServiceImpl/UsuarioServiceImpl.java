@@ -25,6 +25,11 @@ public class UsuarioServiceImpl implements UsuarioService {
     }
 
     @Override
+    public List<Usuario> obtenerResidentes() {
+        return usuarioRepository.findByRolOrderByNombreAsc(Usuario.Rol.RESIDENTE);
+    }
+
+    @Override
     public Optional<Usuario> obtenerPorId(Long id) {
         return usuarioRepository.findById(id);
     }

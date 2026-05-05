@@ -51,6 +51,12 @@ public class PagoAdministracionController {
         }
     }
 
+    @PostMapping("/admin/estado-pagos")
+    @PreAuthorize("hasRole('ADMINISTRADOR')")
+    public ResponseEntity<?> listarEstadoPagosAdminPost() {
+        return listarEstadoPagosAdmin();
+    }
+
     @GetMapping("/{id}")
     public Optional<PagoAdministracion> obtenerPorId(@PathVariable Long id) {
         return pagoAdministracionService.obtenerPorId(id);

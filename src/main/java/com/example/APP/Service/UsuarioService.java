@@ -9,6 +9,7 @@ import java.util.Optional;
 public interface UsuarioService {
 
     List<Usuario> obtenerTodos();
+    List<Usuario> obtenerResidentes();
     Optional<Usuario> obtenerPorId(Long id);
     Usuario guardar(Usuario usuario);
     Usuario crearUsuario(Map<String, Object> payload);

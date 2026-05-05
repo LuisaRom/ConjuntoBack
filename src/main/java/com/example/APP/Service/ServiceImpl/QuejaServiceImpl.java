@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +60,30 @@ public class QuejaServiceImpl implements QuejaService {
     }
 
     @Override
+    public List<Map<String, Object>> obtenerTarjetasAdmin(String categoria) {
+        List<Queja> quejas = quejaRepository.findAll();
+        List<Map<String, Object>> tarjetas = new ArrayList<>();
+        String categoriaFiltro = categoria != null ? categoria.trim().toUpperCase() : "";
+
+        for (Queja queja : quejas) {
+            String categoriaQueja = categorizarQueja(queja);
+            if (!categoriaFiltro.isBlank() && !categoriaQueja.equals(categoriaFiltro)) {
+                continue;
+            }
+
+            Map<String, Object> tarjeta = new LinkedHashMap<>();
+            tarjeta.put("id", queja.getId());
+            tarjeta.put("descripcion", queja.getDescripcion());
+            tarjeta.put("fecha", queja.getFechaCreacion());
+            tarjeta.put("estado", queja.getEstado());
+            tarjeta.put("categoria", construirCategoria(categoriaQueja));
+            tarjeta.put("usuario", construirUsuarioResumen(queja.getUsuario()));
+            tarjetas.add(tarjeta);
+        }
+        return tarjetas;
+    }
+
+    @Override
     public Optional<Queja> obtenerPorId(Long id) {
         return quejaRepository.findById(id);
     }
@@ -77,8 +102,8 @@ public class QuejaServiceImpl implements QuejaService {
         Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
         
-        String descripcion = extraerTexto(payload, "descripcion");
-        String tipoQueja = extraerTexto(payload, "tipoQueja");
+        String descripcion = textoPreferido(payload, "mensaje", "descripcion");
+        String tipoQueja = textoPreferido(payload, "tipo", "tipoQueja");
         if (tipoQueja == null || tipoQueja.isBlank()) {
             tipoQueja = extraerTexto(payload, "clasificacion");
         }
@@ -86,32 +111,30 @@ public class QuejaServiceImpl implements QuejaService {
             tipoQueja = extraerTexto(payload, "tipo");
         }
         if (descripcion == null || descripcion.isBlank()) {
-            throw new IllegalArgumentException("El campo descripcion es obligatorio");
+            throw new IllegalArgumentException("El campo mensaje es obligatorio");
         }
         if (tipoQueja == null || tipoQueja.isBlank()) {
-            throw new IllegalArgumentException("El campo tipo de queja/clasificacion es obligatorio");
+            throw new IllegalArgumentException("El campo tipo es obligatorio");
         }
         
-        String torreUsuario = usuario.getTorre();
-        String aptoUsuario = usuario.getApartamento();
-        String torrePayload = extraerTexto(payload, "torre");
-        String apartamentoPayload = extraerTexto(payload, "apartamento");
-        
-        String torreFinal = (torreUsuario != null && !torreUsuario.isBlank()) ? torreUsuario : torrePayload;
-        if (torreFinal == null || torreFinal.isBlank()) {
-            throw new IllegalArgumentException("La torre es obligatoria");
+        String torreAcusado = textoPreferido(payload, "torreAcusado", "torre");
+        if (torreAcusado == null || torreAcusado.isBlank()) {
+            throw new IllegalArgumentException("El campo torreAcusado es obligatorio");
         }
-        String apartamentoFinal = (aptoUsuario != null && !aptoUsuario.isBlank()) ? aptoUsuario : apartamentoPayload;
+        String apartamentoAcusado = textoPreferido(payload, "apartamentoAcusado", "apartamento");
         
         LocalDateTime fecha = parseFecha(extraerTexto(payload, "fecha"));
+        if (fecha == null) {
+            throw new IllegalArgumentException("El campo fecha es obligatorio");
+        }
         
         Queja queja = new Queja();
         queja.setUsuario(usuario);
         queja.setDescripcion(descripcion.trim());
         queja.setTipoQueja(tipoQueja.trim().toUpperCase());
-        queja.setTorre(torreFinal.trim());
-        queja.setApartamento(apartamentoFinal != null ? apartamentoFinal.trim() : null);
-        queja.setFechaCreacion(fecha != null ? fecha : LocalDateTime.now());
+        queja.setTorre(torreAcusado.trim());
+        queja.setApartamento(apartamentoAcusado != null ? apartamentoAcusado.trim() : null);
+        queja.setFechaCreacion(fecha);
         queja.setEstado(Queja.Estado.PENDIENTE);
         
         return quejaRepository.save(queja);
@@ -185,10 +208,38 @@ public class QuejaServiceImpl implements QuejaService {
         if (descripcion.contains("bbq") || descripcion.contains("piscina") || descripcion.contains("gimnasio") || descripcion.contains("salon")) return "ZONAS_COMUNES";
         return "GENERAL";
     }
+
+    private Map<String, Object> construirCategoria(String categoria) {
+        Map<String, Object> categoriaMap = new LinkedHashMap<>();
+        categoriaMap.put("id", categoria.toLowerCase());
+        categoriaMap.put("nombre", categoria.replace("_", " "));
+        return categoriaMap;
+    }
+
+    private Map<String, Object> construirUsuarioResumen(Usuario usuario) {
+        Map<String, Object> usuarioMap = new LinkedHashMap<>();
+        if (usuario == null) {
+            return usuarioMap;
+        }
+        usuarioMap.put("id", usuario.getId());
+        usuarioMap.put("nombre", usuario.getNombre());
+        usuarioMap.put("usuario", usuario.getUsuario());
+        usuarioMap.put("torre", usuario.getTorre());
+        usuarioMap.put("apartamento", usuario.getApartamento());
+        return usuarioMap;
+    }
     
     private String extraerTexto(Map<String, Object> payload, String key) {
         Object value = payload.get(key);
         return value != null ? value.toString() : null;
+    }
+
+    private String textoPreferido(Map<String, Object> payload, String principal, String alterno) {
+        String valorPrincipal = extraerTexto(payload, principal);
+        if (valorPrincipal != null && !valorPrincipal.isBlank()) {
+            return valorPrincipal;
+        }
+        return extraerTexto(payload, alterno);
     }
     
     private LocalDateTime parseFecha(String fecha) {

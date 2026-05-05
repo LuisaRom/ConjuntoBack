@@ -33,7 +33,9 @@ public class NotificacionServiceImpl implements NotificacionService {
     @Override
     public List<Notificacion> obtenerTodos() {
         archivarRecibosVencidos();
-        return notificacionRepository.findAll();
+        return notificacionRepository.findAll().stream()
+                .filter(n -> !esMensajeChat(n))
+                .toList();
     }
 
     @Override
@@ -89,6 +91,74 @@ public class NotificacionServiceImpl implements NotificacionService {
     }
 
     @Override
+    public List<Map<String, Object>> obtenerNovedades(String search, String usernameAutenticado) {
+        String filtro = search != null ? search.trim().toLowerCase() : "";
+        Usuario usuarioAutenticado = usuarioRepository.findByUsuario(usernameAutenticado)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
+        return notificacionRepository.findAll().stream()
+                .filter(n -> !esMensajeChat(n))
+                .filter(n -> usuarioAutenticado.getRol() != Usuario.Rol.RESIDENTE
+                        || (n.getUsuario() != null && n.getUsuario().getId() != null
+                        && n.getUsuario().getId().equals(usuarioAutenticado.getId())))
+                .filter(n -> filtro.isBlank() || contieneFiltroNotificacion(n, filtro))
+                .sorted(Comparator.comparing(Notificacion::getFechaEnvio, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
+                .map(this::mapearNotificacionDetalle)
+                .toList();
+    }
+
+    @Override
+    public List<Map<String, Object>> obtenerHistorialChat(String search) {
+        String filtro = search != null ? search.trim().toLowerCase() : "";
+        return notificacionRepository.findAll().stream()
+                .filter(this::esMensajeChat)
+                .filter(n -> filtro.isBlank() || contieneFiltroNotificacion(n, filtro))
+                .sorted(Comparator.comparing(Notificacion::getFechaEnvio, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
+                .map(this::mapearNotificacionDetalle)
+                .toList();
+    }
+
+    @Override
+    public Notificacion enviarMensajeChat(Map<String, Object> payload, String usernameAutenticado) {
+        if (usernameAutenticado == null || usernameAutenticado.isBlank()) {
+            throw new IllegalArgumentException("No hay usuario autenticado");
+        }
+        Usuario remitente = usuarioRepository.findByUsuario(usernameAutenticado)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
+        if (remitente.getRol() != Usuario.Rol.ADMINISTRADOR && remitente.getRol() != Usuario.Rol.CELADOR) {
+            throw new IllegalArgumentException("Solo ADMINISTRADOR o CELADOR pueden enviar mensajes de chat");
+        }
+
+        String mensaje = extraerTexto(payload, "mensaje");
+        if (mensaje == null || mensaje.isBlank()) {
+            throw new IllegalArgumentException("El campo mensaje es obligatorio");
+        }
+
+        Object destinatarioIdObj = payload.get("destinatarioId");
+        if (destinatarioIdObj == null || destinatarioIdObj.toString().isBlank()) {
+            throw new IllegalArgumentException("El campo destinatarioId es obligatorio");
+        }
+
+        Long destinatarioId;
+        try {
+            destinatarioId = Long.parseLong(destinatarioIdObj.toString());
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException("destinatarioId inválido");
+        }
+        Usuario destinatario = usuarioRepository.findById(destinatarioId)
+                .orElseThrow(() -> new IllegalArgumentException("Destinatario no encontrado"));
+        if (destinatario.getRol() != Usuario.Rol.ADMINISTRADOR && destinatario.getRol() != Usuario.Rol.CELADOR) {
+            throw new IllegalArgumentException("Solo se puede enviar mensajes a ADMIN o CELADOR");
+        }
+
+        Notificacion notificacion = new Notificacion();
+        notificacion.setUsuario(remitente);
+        notificacion.setMensaje("[CHAT] " + mensaje.trim());
+        notificacion.setFechaEnvio(LocalDateTime.now());
+        notificacion.setUsuariosEtiquetados(destinatarioId.toString());
+        return notificacionRepository.save(notificacion);
+    }
+
+    @Override
     public List<Map<String, Object>> listarUsuariosParaNotificaciones(String search) {
         String filtro = search != null ? search.trim().toLowerCase() : "";
         return usuarioRepository.findAll().stream()
@@ -109,22 +179,11 @@ public class NotificacionServiceImpl implements NotificacionService {
         if (mensaje == null || mensaje.isBlank()) {
             throw new IllegalArgumentException("El campo mensaje es obligatorio");
         }
-
-        Object usuarioIdObj = payload.get("usuarioId");
-        List<Usuario> destinatarios;
-        if (usuarioIdObj == null || usuarioIdObj.toString().isBlank() || "todos".equalsIgnoreCase(usuarioIdObj.toString())) {
-            destinatarios = usuarioRepository.findAll();
-        } else {
-            Long usuarioId;
-            try {
-                usuarioId = Long.parseLong(usuarioIdObj.toString());
-            } catch (NumberFormatException ex) {
-                throw new IllegalArgumentException("usuarioId inválido");
-            }
-            Usuario usuario = usuarioRepository.findById(usuarioId)
-                    .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
-            destinatarios = List.of(usuario);
+        String tipoEnvio = extraerTexto(payload, "tipoEnvio");
+        if (tipoEnvio == null || tipoEnvio.isBlank()) {
+            tipoEnvio = "todos";
         }
+        List<Usuario> destinatarios = resolverDestinatariosRecibo(tipoEnvio, payload.get("usuarioId"));
 
         List<Notificacion> creadas = new ArrayList<>();
         for (Usuario usuario : destinatarios) {
@@ -186,6 +245,58 @@ public class NotificacionServiceImpl implements NotificacionService {
         boolean tieneRecibo = mensaje.contains("recibo");
         boolean tieneTipo = mensaje.contains("enel") || mensaje.contains("vanti") || mensaje.contains("epz");
         return tieneRecibo && tieneTipo;
+    }
+
+    private boolean esMensajeChat(Notificacion notificacion) {
+        if (notificacion == null) {
+            return false;
+        }
+        String mensaje = notificacion.getMensaje() != null ? notificacion.getMensaje().trim().toLowerCase() : "";
+        return mensaje.startsWith("[chat]");
+    }
+
+    private boolean contieneFiltroNotificacion(Notificacion notificacion, String filtro) {
+        String mensaje = notificacion.getMensaje() != null ? notificacion.getMensaje().toLowerCase() : "";
+        String nombre = notificacion.getUsuario() != null && notificacion.getUsuario().getNombre() != null
+                ? notificacion.getUsuario().getNombre().toLowerCase() : "";
+        return mensaje.contains(filtro) || nombre.contains(filtro);
+    }
+
+    private Map<String, Object> mapearNotificacionDetalle(Notificacion notificacion) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", notificacion.getId());
+        item.put("mensaje", notificacion.getMensaje());
+        item.put("fechaEnvio", notificacion.getFechaEnvio());
+        item.put("imagenUrl", notificacion.getImagenUrl());
+        item.put("videoUrl", notificacion.getVideoUrl());
+        item.put("usuariosEtiquetados", notificacion.getUsuariosEtiquetados());
+        item.put("usuario", mapearUsuarioResumen(notificacion.getUsuario()));
+        return item;
+    }
+
+    private List<Usuario> resolverDestinatariosRecibo(String tipoEnvio, Object usuarioIdObj) {
+        String tipo = tipoEnvio.trim().toLowerCase();
+        if ("todos".equals(tipo)) {
+            return usuarioRepository.findByRolOrderByNombreAsc(Usuario.Rol.RESIDENTE);
+        }
+        if (!"individual".equals(tipo)) {
+            throw new IllegalArgumentException("tipoEnvio inválido. Usa 'todos' o 'individual'");
+        }
+        if (usuarioIdObj == null || usuarioIdObj.toString().isBlank()) {
+            throw new IllegalArgumentException("usuarioId es obligatorio para tipoEnvio individual");
+        }
+        Long usuarioId;
+        try {
+            usuarioId = Long.parseLong(usuarioIdObj.toString());
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException("usuarioId inválido");
+        }
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        if (usuario.getRol() != Usuario.Rol.RESIDENTE) {
+            throw new IllegalArgumentException("El usuario destino debe ser RESIDENTE");
+        }
+        return List.of(usuario);
     }
 
     private Map<String, Object> mapearUsuarioResumen(Usuario usuario) {

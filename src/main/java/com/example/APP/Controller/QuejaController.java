@@ -5,6 +5,7 @@ import com.example.APP.Model.Queja;
 import com.example.APP.Service.QuejaService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -44,6 +45,14 @@ public class QuejaController {
             @RequestParam(name = "categoria", required = false) String categoria
     ) {
         return quejaService.obtenerTodasAgrupadasPorCategoria(categoria);
+    }
+
+    @GetMapping("/admin/tarjetas")
+    @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'CELADOR')")
+    public List<Map<String, Object>> obtenerQuejasParaTarjetasAdmin(
+            @RequestParam(name = "categoria", required = false) String categoria
+    ) {
+        return quejaService.obtenerTarjetasAdmin(categoria);
     }
 
     @GetMapping("/{id}")

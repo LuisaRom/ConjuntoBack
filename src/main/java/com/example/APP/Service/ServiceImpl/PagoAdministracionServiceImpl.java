@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
@@ -107,21 +108,31 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(mercadoPagoAccessToken);
 
-        ResponseEntity<Map> response = restTemplate.exchange(
-                "https://api.mercadopago.com/checkout/preferences",
-                HttpMethod.POST,
-                new HttpEntity<>(preferencePayload, headers),
-                Map.class
-        );
-
-        Map body = response.getBody();
+        Map body;
+        try {
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    "https://api.mercadopago.com/checkout/preferences",
+                    HttpMethod.POST,
+                    new HttpEntity<>(preferencePayload, headers),
+                    Map.class
+            );
+            body = response.getBody();
+        } catch (RestClientException ex) {
+            throw new IllegalArgumentException("No fue posible crear la preferencia en Mercado Pago (sandbox)");
+        }
         if (body == null || body.get("id") == null) {
             throw new IllegalArgumentException("No fue posible crear la preferencia de pago en Mercado Pago");
         }
 
-        String initPoint = body.get("sandbox_init_point") != null
-                ? body.get("sandbox_init_point").toString()
-                : body.get("init_point").toString();
+        Object sandboxInitPoint = body.get("sandbox_init_point");
+        Object initPointNormal = body.get("init_point");
+        if (sandboxInitPoint == null && initPointNormal == null) {
+            throw new IllegalArgumentException("Mercado Pago no devolvió init_point para continuar el pago");
+        }
+
+        String initPoint = sandboxInitPoint != null
+                ? sandboxInitPoint.toString()
+                : initPointNormal.toString();
 
         PagoAdministracion pago = new PagoAdministracion();
         pago.setUsuario(usuario);
@@ -141,6 +152,8 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         salida.put("estado", pago.getEstadoPago());
         salida.put("metodoPago", "Pago en linea");
         salida.put("referenciaExterna", referenciaExterna);
+        salida.put("mercadoPagoPreferenceId", body.get("id").toString());
+        salida.put("initPoint", initPoint);
         salida.put("checkoutUrl", initPoint);
         salida.put("mensaje", "Pago creado. Redirige al usuario a Mercado Pago.");
         return salida;

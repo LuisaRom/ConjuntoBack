@@ -11,6 +11,7 @@ public interface QuejaService {
     List<Queja> obtenerTodos();
     Map<String, List<Queja>> obtenerTodasAgrupadasPorCategoria();
     Map<String, List<Queja>> obtenerTodasAgrupadasPorCategoria(String categoria);
+    List<Map<String, Object>> obtenerTarjetasAdmin(String categoria);
     Optional<Queja> obtenerPorId(Long id);
     Queja guardar(Queja queja);
     Queja crearQueja(Map<String, Object> payload, String usernameAutenticado);

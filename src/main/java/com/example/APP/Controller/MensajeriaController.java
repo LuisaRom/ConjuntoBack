@@ -1,6 +1,6 @@
 package com.example.APP.Controller;
 
-import com.example.APP.DTO.UsuarioResponseDto;
+import com.example.APP.DTO.MensajeriaUsuarioDto;
 import com.example.APP.Model.Usuario;
 import com.example.APP.Service.UsuarioService;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,23 +26,23 @@ public class MensajeriaController {
 
     @GetMapping("/usuarios-celadores")
     @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'CELADOR')")
-    public List<UsuarioResponseDto> obtenerUsuariosCeladores() {
+    public List<MensajeriaUsuarioDto> obtenerUsuariosCeladores() {
         return usuarioService.obtenerTodos().stream()
                 .filter(this::usuarioActivo)
                 .filter(usuario -> usuario.getRol() == Usuario.Rol.CELADOR)
                 .sorted(Comparator.comparing(Usuario::getNombre, Comparator.nullsLast(String::compareToIgnoreCase)))
-                .map(UsuarioResponseDto::fromEntity)
+                .map(MensajeriaUsuarioDto::fromEntity)
                 .collect(Collectors.toList());
     }
 
     @GetMapping("/usuarios-admin")
     @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'CELADOR')")
-    public List<UsuarioResponseDto> obtenerUsuariosAdmin() {
+    public List<MensajeriaUsuarioDto> obtenerUsuariosAdmin() {
         return usuarioService.obtenerTodos().stream()
                 .filter(this::usuarioActivo)
                 .filter(usuario -> usuario.getRol() == Usuario.Rol.ADMINISTRADOR)
                 .sorted(Comparator.comparing(Usuario::getNombre, Comparator.nullsLast(String::compareToIgnoreCase)))
-                .map(UsuarioResponseDto::fromEntity)
+                .map(MensajeriaUsuarioDto::fromEntity)
                 .collect(Collectors.toList());
     }
 

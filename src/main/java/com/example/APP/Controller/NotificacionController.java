@@ -4,6 +4,8 @@ import com.example.APP.Model.Notificacion;
 import com.example.APP.Service.NotificacionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,6 +23,31 @@ public class NotificacionController {
     @GetMapping
     public List<Notificacion> obtenerTodos() {
         return notificacionService.obtenerTodos();
+    }
+
+    @GetMapping("/novedades")
+    @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'CELADOR', 'RESIDENTE')")
+    public List<Map<String, Object>> obtenerNovedades(
+            @RequestParam(name = "search", required = false) String search,
+            Authentication authentication
+    ) {
+        return notificacionService.obtenerNovedades(search, authentication.getName());
+    }
+
+    @GetMapping("/chat/historial")
+    @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'CELADOR')")
+    public List<Map<String, Object>> obtenerHistorialChat(@RequestParam(name = "search", required = false) String search) {
+        return notificacionService.obtenerHistorialChat(search);
+    }
+
+    @PostMapping("/chat/enviar")
+    @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'CELADOR')")
+    public ResponseEntity<?> enviarMensajeChat(@RequestBody Map<String, Object> payload, Authentication authentication) {
+        try {
+            return ResponseEntity.ok(notificacionService.enviarMensajeChat(payload, authentication.getName()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @GetMapping("/usuarios")
@@ -53,6 +80,7 @@ public class NotificacionController {
     }
 
     @PostMapping("/recibos/enviar")
+    @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'CELADOR')")
     public ResponseEntity<?> enviarRecibo(@RequestBody Map<String, Object> payload) {
         try {
             return ResponseEntity.ok(notificacionService.enviarNotificacionRecibo(payload));

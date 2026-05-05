@@ -154,6 +154,7 @@ public class AccesoController {
         item.put("codigoQr", leerPropiedad(bean, "codigoQr"));
         item.put("torre", torre);
         item.put("apartamento", apartamento);
+        item.put("fecha", valorFechaAcceso(bean));
         item.put("horaAutorizada", leerPropiedad(bean, "horaAutorizada"));
         item.put("horaEntrada", leerPropiedad(bean, "horaEntrada"));
         item.put("horaSalida", leerPropiedad(bean, "horaSalida"));
@@ -185,6 +186,14 @@ public class AccesoController {
 
     private Object leerPropiedad(BeanWrapperImpl bean, String propiedad) {
         return bean.isReadableProperty(propiedad) ? bean.getPropertyValue(propiedad) : null;
+    }
+
+    private Object valorFechaAcceso(BeanWrapperImpl bean) {
+        Object fecha = leerPropiedad(bean, "fecha");
+        if (fecha != null) {
+            return fecha;
+        }
+        return leerPropiedad(bean, "horaAutorizada");
     }
     
     private Map<String, Object> construirRespuestaQr(Map<String, Object> acceso) {
