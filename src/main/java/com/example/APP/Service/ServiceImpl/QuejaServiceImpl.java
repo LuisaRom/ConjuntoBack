@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -246,10 +248,21 @@ public class QuejaServiceImpl implements QuejaService {
         if (fecha == null || fecha.isBlank()) {
             return null;
         }
+        String valor = fecha.trim();
         try {
-            return LocalDateTime.parse(fecha);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Formato de fecha inválido. Usa ISO 8601");
+            return LocalDateTime.parse(valor);
+        } catch (Exception ignored) {
+            // Continua con formatos alternos para compatibilidad con frontend.
         }
+        try {
+            return LocalDate.parse(valor).atStartOfDay();
+        } catch (Exception ignored) {
+        }
+        try {
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+            return LocalDate.parse(valor, formatter).atStartOfDay();
+        } catch (Exception ignored) {
+        }
+        throw new IllegalArgumentException("Formato de fecha inválido. Usa ISO 8601, yyyy-MM-dd o dd/MM/yyyy");
     }
 }

@@ -32,6 +32,24 @@ public class PagoAdministracionController {
         return pagoAdministracionService.listarPagosResidente(authentication.getName());
     }
 
+    @GetMapping("/residente")
+    @PreAuthorize("hasRole('RESIDENTE')")
+    public List<Map<String, Object>> listarPagosResidenteAlias(Authentication authentication) {
+        return listarMisPagos(authentication);
+    }
+
+    @GetMapping("/residente/pagos")
+    @PreAuthorize("hasRole('RESIDENTE')")
+    public List<Map<String, Object>> listarPagosResidentePagosAlias(Authentication authentication) {
+        return listarMisPagos(authentication);
+    }
+
+    @PostMapping("/residente/pagos")
+    @PreAuthorize("hasRole('RESIDENTE')")
+    public List<Map<String, Object>> listarPagosResidentePagosAliasPost(Authentication authentication) {
+        return listarMisPagos(authentication);
+    }
+
     @GetMapping("/admin")
     @PreAuthorize("hasRole('ADMINISTRADOR')")
     public List<Map<String, Object>> listarPagosAdmin(Authentication authentication) {

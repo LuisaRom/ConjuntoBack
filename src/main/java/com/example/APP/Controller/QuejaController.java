@@ -68,6 +68,9 @@ public class QuejaController {
     @PostMapping("/crear")
     public ResponseEntity<?> crear(@RequestBody Map<String, Object> payload, Authentication authentication) {
         try {
+            if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+                return ResponseEntity.status(401).body("No hay usuario autenticado");
+            }
             return ResponseEntity.ok(quejaService.crearQueja(payload, authentication.getName()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

@@ -1,5 +1,6 @@
 package com.example.APP.Model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -15,6 +16,7 @@ public class AccesoPeatonal {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @JsonAlias({"nombre", "visitante", "nombre_visitante"})
     private String nombreVisitante;
     private String torre;
     private String apartamento;
@@ -31,5 +33,6 @@ public class AccesoPeatonal {
     private LocalDateTime horaAutorizada;
     private LocalDateTime horaEntrada;
     private LocalDateTime horaSalida;
+    @JsonAlias({"fechaAcceso", "fecha_acceso"})
     private LocalDate fecha;
 }

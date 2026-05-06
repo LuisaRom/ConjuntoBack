@@ -4,6 +4,7 @@ import com.example.APP.Model.AccesoPeatonal;
 import com.example.APP.Service.AccesoPeatonalService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -37,6 +38,16 @@ public class AccesoPeatonalController {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Usuario no autenticado");
         }
         return accesoPeatonalService.guardarParaUsuarioAutenticado(accesoPeatonal, authentication.getName());
+    }
+
+    @PostMapping("/crear")
+    @PreAuthorize("hasRole('RESIDENTE')")
+    public ResponseEntity<?> crear(@RequestBody AccesoPeatonal accesoPeatonal, Authentication authentication) {
+        try {
+            return ResponseEntity.status(HttpStatus.CREATED).body(guardar(accesoPeatonal, authentication));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @DeleteMapping("/{id}")

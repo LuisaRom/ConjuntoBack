@@ -93,7 +93,6 @@ public class ReservaZonaComunServiceImpl implements ReservaZonaComunService {
                     .findByZonaComunIgnoreCaseAndFechaReservaAndUsuarioId(tipo, fechaReserva, usuarioId);
             respuesta.put("usuarioId", usuarioId);
             respuesta.put("usuarioYaReservoEnElDia", !reservasUsuario.isEmpty());
-            respuesta.put("maximoReservasPorDiaUsuario", 1);
         }
         return respuesta;
     }
@@ -227,7 +226,7 @@ public class ReservaZonaComunServiceImpl implements ReservaZonaComunService {
                     throw new IllegalArgumentException("Gimnasio permite horarios 5:00-10:00 o 15:00-20:00");
                 }
                 if (minutos > 180) {
-                    throw new IllegalArgumentException("Gimnasio permite máximo 3 horas por reserva");
+                    throw new IllegalArgumentException("La duración seleccionada no está permitida para gimnasio");
                 }
             }
             case "salon comunal" -> {

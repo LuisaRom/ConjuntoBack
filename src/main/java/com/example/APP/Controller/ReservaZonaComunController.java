@@ -196,7 +196,6 @@ public class ReservaZonaComunController {
             respuesta.put("horaInicio", horaInicio);
             respuesta.put("horaFin", horaFin);
             respuesta.put("usuarioId", usuarioId);
-            respuesta.put("maximoReservasPorDiaUsuario", 1);
             respuesta.put("diasPermitidos", "jueves-domingo");
             respuesta.put("rangoPermitido", "10:00-22:00");
             respuesta.put("disponible", disponible);

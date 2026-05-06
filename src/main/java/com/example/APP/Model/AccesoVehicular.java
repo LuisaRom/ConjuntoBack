@@ -17,9 +17,11 @@ public class AccesoVehicular {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @JsonAlias("placa")
+    @JsonAlias({"placa", "placa_vehiculo"})
     private String placaVehiculo;
+    @JsonAlias({"tipo", "tipo_vehiculo"})
     private String tipoVehiculo;
+    @JsonAlias({"nombrePersona", "nombre_persona", "ingresa"})
     private String quienIngresa;
     private String torre;
     private String apartamento;
@@ -37,6 +39,7 @@ public class AccesoVehicular {
     private LocalDateTime horaAutorizada;
     private LocalDateTime horaEntrada;
     private LocalDateTime horaSalida;
+    @JsonAlias({"fechaAcceso", "fecha_acceso"})
     private LocalDate fecha;
 }
 

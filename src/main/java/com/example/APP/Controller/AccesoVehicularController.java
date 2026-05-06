@@ -9,6 +9,7 @@ import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.qrcode.QRCodeWriter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -49,6 +50,16 @@ public class AccesoVehicularController {
         }
         AccesoVehicular guardado = accesoVehicularService.guardarParaUsuarioAutenticado(accesoVehicular, authentication.getName());
         return construirRespuestaQr(guardado);
+    }
+
+    @PostMapping("/crear")
+    @PreAuthorize("hasRole('RESIDENTE')")
+    public ResponseEntity<?> crear(@RequestBody AccesoVehicular accesoVehicular, Authentication authentication) {
+        try {
+            return ResponseEntity.status(HttpStatus.CREATED).body(guardar(accesoVehicular, authentication));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @DeleteMapping("/{id}")
