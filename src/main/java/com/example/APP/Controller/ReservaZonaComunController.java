@@ -257,6 +257,8 @@ public class ReservaZonaComunController {
         user.put("id", usuario.getId());
         user.put("nombre", usuario.getNombre());
         user.put("usuario", usuario.getUsuario());
+        user.put("torre", usuario.getTorre());
+        user.put("apartamento", usuario.getApartamento());
         return user;
     }
 }

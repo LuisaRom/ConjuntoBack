@@ -62,6 +62,7 @@ public class MascotaController {
             @RequestParam(value = "descripcion", required = false) String descripcion,
             @RequestParam(value = "raza", required = false) String raza,
             @RequestParam(value = "foto", required = false) MultipartFile foto,
+            @RequestParam(value = "imagen", required = false) MultipartFile imagen,
             Authentication authentication
     ) {
         try {
@@ -70,7 +71,8 @@ public class MascotaController {
             }
             String nombreFinal = (nombreMascota != null && !nombreMascota.isBlank()) ? nombreMascota : nombre;
             String tipoFinal = (tipoMascota != null && !tipoMascota.isBlank()) ? tipoMascota : tipo;
-            Mascota creada = mascotaService.crearMascota(nombreFinal, tipoFinal, descripcion, raza, authentication.getName(), foto);
+            MultipartFile archivoImagen = (imagen != null && !imagen.isEmpty()) ? imagen : foto;
+            Mascota creada = mascotaService.crearMascota(nombreFinal, tipoFinal, descripcion, raza, authentication.getName(), archivoImagen);
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("id", creada.getId());
             resp.put("nombre", creada.getNombre());
@@ -82,14 +84,16 @@ public class MascotaController {
             resp.put("usuario", creada.getUsuario());
             return ResponseEntity.ok(resp);
         } catch (IllegalArgumentException e) {
+            boolean fotoPresente = (foto != null && !foto.isEmpty()) || (imagen != null && !imagen.isEmpty());
             log.warn("Error 400 al crear mascota. usuario={}, nombre='{}', tipo='{}', raza='{}', fotoPresente={}, motivo={}",
                     authentication != null ? authentication.getName() : "anon",
-                    nombre, tipo, raza, foto != null && !foto.isEmpty(), e.getMessage(), e);
+                    nombre, tipo, raza, fotoPresente, e.getMessage(), e);
             return ResponseEntity.badRequest().body(e.getMessage());
         } catch (Exception e) {
+            boolean fotoPresente = (foto != null && !foto.isEmpty()) || (imagen != null && !imagen.isEmpty());
             log.error("Error inesperado al crear mascota. usuario={}, nombre='{}', tipo='{}', raza='{}', fotoPresente={}",
                     authentication != null ? authentication.getName() : "anon",
-                    nombre, tipo, raza, foto != null && !foto.isEmpty(), e);
+                    nombre, tipo, raza, fotoPresente, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("No se pudo crear la publicación de mascota");
         }

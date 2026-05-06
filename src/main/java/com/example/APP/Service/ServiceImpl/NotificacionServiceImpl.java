@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -68,6 +69,8 @@ public class NotificacionServiceImpl implements NotificacionService {
         if (notificacion.getFechaEnvio() == null) {
             notificacion.setFechaEnvio(java.time.LocalDateTime.now());
         }
+        validarMultimediaOpcional(notificacion.getImagenUrl(), "imagenUrl");
+        validarMultimediaOpcional(notificacion.getVideoUrl(), "videoUrl");
         
         System.out.println("NotificacionServiceImpl: Guardando notificación - Mensaje: " + notificacion.getMensaje() + 
                            ", Usuario ID: " + (notificacion.getUsuario() != null ? notificacion.getUsuario().getId() : "null"));
@@ -79,6 +82,8 @@ public class NotificacionServiceImpl implements NotificacionService {
     public Notificacion actualizar(Long id, Notificacion notificacion) {
         return notificacionRepository.findById(id)
                 .map(existing -> {
+                    validarMultimediaOpcional(notificacion.getImagenUrl(), "imagenUrl");
+                    validarMultimediaOpcional(notificacion.getVideoUrl(), "videoUrl");
                     existing.setMensaje(notificacion.getMensaje());
                     existing.setFechaEnvio(notificacion.getFechaEnvio() != null ? notificacion.getFechaEnvio() : existing.getFechaEnvio());
                     existing.setImagenUrl(notificacion.getImagenUrl());
@@ -184,6 +189,10 @@ public class NotificacionServiceImpl implements NotificacionService {
             tipoEnvio = "todos";
         }
         List<Usuario> destinatarios = resolverDestinatariosRecibo(tipoEnvio, payload.get("usuarioId"));
+        String imagenUrl = extraerTexto(payload, "imagenUrl");
+        String videoUrl = extraerTexto(payload, "videoUrl");
+        validarMultimediaOpcional(imagenUrl, "imagenUrl");
+        validarMultimediaOpcional(videoUrl, "videoUrl");
 
         List<Notificacion> creadas = new ArrayList<>();
         for (Usuario usuario : destinatarios) {
@@ -191,8 +200,8 @@ public class NotificacionServiceImpl implements NotificacionService {
             notificacion.setUsuario(usuario);
             notificacion.setMensaje(mensaje.trim());
             notificacion.setFechaEnvio(LocalDateTime.now());
-            notificacion.setImagenUrl(extraerTexto(payload, "imagenUrl"));
-            notificacion.setVideoUrl(extraerTexto(payload, "videoUrl"));
+            notificacion.setImagenUrl(imagenUrl);
+            notificacion.setVideoUrl(videoUrl);
             creadas.add(notificacionRepository.save(notificacion));
         }
         return creadas;
@@ -313,5 +322,30 @@ public class NotificacionServiceImpl implements NotificacionService {
     private String extraerTexto(Map<String, Object> payload, String key) {
         Object value = payload.get(key);
         return value != null ? value.toString() : null;
+    }
+
+    private void validarMultimediaOpcional(String url, String campo) {
+        if (url == null || url.isBlank()) {
+            return;
+        }
+        String valor = url.trim();
+        if (!(valor.startsWith("http://") || valor.startsWith("https://"))) {
+            throw new IllegalArgumentException(campo + " inválida: debe ser URL pública http(s)");
+        }
+        try {
+            URI uri = URI.create(valor);
+            if (uri.getHost() == null || uri.getHost().isBlank()) {
+                throw new IllegalArgumentException(campo + " inválida: host no válido");
+            }
+            String host = uri.getHost().toLowerCase();
+            if ("localhost".equals(host) || host.startsWith("127.") || "0.0.0.0".equals(host)) {
+                throw new IllegalArgumentException(campo + " inválida: no se permiten URLs locales");
+            }
+        } catch (IllegalArgumentException ex) {
+            if (ex.getMessage() != null && ex.getMessage().contains("inválida")) {
+                throw ex;
+            }
+            throw new IllegalArgumentException(campo + " inválida: formato no reconocido");
+        }
     }
 }

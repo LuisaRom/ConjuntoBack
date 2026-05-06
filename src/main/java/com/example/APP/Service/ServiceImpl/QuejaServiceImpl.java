@@ -9,6 +9,10 @@ import com.example.APP.Service.NotificacionService;
 import com.example.APP.Service.QuejaService;
 import org.springframework.beans.BeanWrapperImpl;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -72,17 +76,57 @@ public class QuejaServiceImpl implements QuejaService {
             if (!categoriaFiltro.isBlank() && !categoriaQueja.equals(categoriaFiltro)) {
                 continue;
             }
-
-            Map<String, Object> tarjeta = new LinkedHashMap<>();
-            tarjeta.put("id", queja.getId());
-            tarjeta.put("descripcion", queja.getDescripcion());
-            tarjeta.put("fecha", queja.getFechaCreacion());
-            tarjeta.put("estado", queja.getEstado());
-            tarjeta.put("categoria", construirCategoria(categoriaQueja));
-            tarjeta.put("usuario", construirUsuarioResumen(queja.getUsuario()));
-            tarjetas.add(tarjeta);
+            tarjetas.add(mapearTarjetaAdmin(queja, categoriaQueja));
         }
         return tarjetas;
+    }
+
+    @Override
+    public Map<String, Object> obtenerTarjetasAdminPaginadas(String categoria, int page, int size) {
+        if (page < 0) {
+            throw new IllegalArgumentException("El parámetro page no puede ser negativo");
+        }
+        if (size <= 0) {
+            throw new IllegalArgumentException("El parámetro size debe ser mayor a 0");
+        }
+        if (size > 100) {
+            throw new IllegalArgumentException("El parámetro size no debe ser mayor a 100");
+        }
+
+        String categoriaFiltro = categoria != null ? categoria.trim().toUpperCase() : "";
+        if (categoriaFiltro.isBlank()) {
+            Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "fechaCreacion"));
+            Page<Queja> pagina = quejaRepository.findAll(pageable);
+            List<Map<String, Object>> tarjetas = pagina.getContent().stream()
+                    .map(queja -> mapearTarjetaAdmin(queja, categorizarQueja(queja)))
+                    .toList();
+
+            Map<String, Object> respuesta = new LinkedHashMap<>();
+            respuesta.put("content", tarjetas);
+            respuesta.put("page", pagina.getNumber());
+            respuesta.put("size", pagina.getSize());
+            respuesta.put("totalElements", pagina.getTotalElements());
+            respuesta.put("totalPages", pagina.getTotalPages());
+            respuesta.put("first", pagina.isFirst());
+            respuesta.put("last", pagina.isLast());
+            return respuesta;
+        }
+
+        List<Map<String, Object>> filtradas = obtenerTarjetasAdmin(categoriaFiltro);
+        int total = filtradas.size();
+        int inicio = page * size;
+        int fin = Math.min(inicio + size, total);
+        List<Map<String, Object>> contenido = inicio >= total ? List.of() : filtradas.subList(inicio, fin);
+
+        Map<String, Object> respuesta = new LinkedHashMap<>();
+        respuesta.put("content", contenido);
+        respuesta.put("page", page);
+        respuesta.put("size", size);
+        respuesta.put("totalElements", total);
+        respuesta.put("totalPages", (int) Math.ceil(total / (double) size));
+        respuesta.put("first", page == 0);
+        respuesta.put("last", fin >= total);
+        return respuesta;
     }
 
     @Override
@@ -229,6 +273,17 @@ public class QuejaServiceImpl implements QuejaService {
         usuarioMap.put("torre", usuario.getTorre());
         usuarioMap.put("apartamento", usuario.getApartamento());
         return usuarioMap;
+    }
+
+    private Map<String, Object> mapearTarjetaAdmin(Queja queja, String categoriaQueja) {
+        Map<String, Object> tarjeta = new LinkedHashMap<>();
+        tarjeta.put("id", queja.getId());
+        tarjeta.put("descripcion", queja.getDescripcion());
+        tarjeta.put("fecha", queja.getFechaCreacion());
+        tarjeta.put("estado", queja.getEstado());
+        tarjeta.put("categoria", construirCategoria(categoriaQueja));
+        tarjeta.put("usuario", construirUsuarioResumen(queja.getUsuario()));
+        return tarjeta;
     }
     
     private String extraerTexto(Map<String, Object> payload, String key) {

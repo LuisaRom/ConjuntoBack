@@ -61,12 +61,15 @@ public class NotificacionController {
     }
 
     @PostMapping
-    public Notificacion guardar(@RequestBody Notificacion notificacion) {
-        // Si no tiene fecha, asignar la fecha actual
-        if (notificacion.getFechaEnvio() == null) {
-            notificacion.setFechaEnvio(java.time.LocalDateTime.now());
+    public ResponseEntity<?> guardar(@RequestBody Notificacion notificacion) {
+        try {
+            if (notificacion.getFechaEnvio() == null) {
+                notificacion.setFechaEnvio(java.time.LocalDateTime.now());
+            }
+            return ResponseEntity.ok(notificacionService.guardar(notificacion));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
-        return notificacionService.guardar(notificacion);
     }
 
     @PutMapping("/{id}")

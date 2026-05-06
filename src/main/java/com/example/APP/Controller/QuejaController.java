@@ -49,10 +49,17 @@ public class QuejaController {
 
     @GetMapping("/admin/tarjetas")
     @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'CELADOR')")
-    public List<Map<String, Object>> obtenerQuejasParaTarjetasAdmin(
-            @RequestParam(name = "categoria", required = false) String categoria
+    public ResponseEntity<?> obtenerQuejasParaTarjetasAdmin(
+            @RequestParam(name = "categoria", required = false) String categoria,
+            @RequestParam(name = "page", required = false) Integer page,
+            @RequestParam(name = "size", required = false) Integer size
     ) {
-        return quejaService.obtenerTarjetasAdmin(categoria);
+        if (page != null || size != null) {
+            int pageFinal = page != null ? page : 0;
+            int sizeFinal = size != null ? size : 20;
+            return ResponseEntity.ok(quejaService.obtenerTarjetasAdminPaginadas(categoria, pageFinal, sizeFinal));
+        }
+        return ResponseEntity.ok(quejaService.obtenerTarjetasAdmin(categoria));
     }
 
     @GetMapping("/{id}")
