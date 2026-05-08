@@ -26,7 +26,7 @@ public class MensajeriaController {
     }
 
     @GetMapping("/contactos")
-    @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'CELADOR', 'RESIDENTE')")
+    @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'CELADOR')")
     public List<MensajeriaUsuarioDto> obtenerContactosMensajeria(Authentication authentication) {
         String usuarioAutenticado = authentication != null ? authentication.getName() : null;
         return usuarioService.obtenerTodos().stream()
