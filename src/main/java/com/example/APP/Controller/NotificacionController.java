@@ -36,8 +36,11 @@ public class NotificacionController {
 
     @GetMapping("/chat/historial")
     @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'CELADOR')")
-    public List<Map<String, Object>> obtenerHistorialChat(@RequestParam(name = "search", required = false) String search) {
-        return notificacionService.obtenerHistorialChat(search);
+    public List<Map<String, Object>> obtenerHistorialChat(
+            @RequestParam(name = "search", required = false) String search,
+            Authentication authentication
+    ) {
+        return notificacionService.obtenerHistorialChat(search, authentication.getName());
     }
 
     @PostMapping("/chat/enviar")

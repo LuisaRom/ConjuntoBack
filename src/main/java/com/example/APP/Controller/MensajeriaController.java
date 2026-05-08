@@ -4,6 +4,7 @@ import com.example.APP.DTO.MensajeriaUsuarioDto;
 import com.example.APP.Model.Usuario;
 import com.example.APP.Service.UsuarioService;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,6 +23,19 @@ public class MensajeriaController {
 
     public MensajeriaController(UsuarioService usuarioService) {
         this.usuarioService = usuarioService;
+    }
+
+    @GetMapping("/contactos")
+    @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'CELADOR', 'RESIDENTE')")
+    public List<MensajeriaUsuarioDto> obtenerContactosMensajeria(Authentication authentication) {
+        String usuarioAutenticado = authentication != null ? authentication.getName() : null;
+        return usuarioService.obtenerTodos().stream()
+                .filter(this::usuarioActivo)
+                .filter(usuario -> usuario.getRol() == Usuario.Rol.ADMINISTRADOR || usuario.getRol() == Usuario.Rol.CELADOR)
+                .filter(usuario -> usuarioAutenticado == null || !usuarioAutenticado.equals(usuario.getUsuario()))
+                .sorted(Comparator.comparing(Usuario::getNombre, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .map(MensajeriaUsuarioDto::fromEntity)
+                .collect(Collectors.toList());
     }
 
     @GetMapping("/usuarios-celadores")

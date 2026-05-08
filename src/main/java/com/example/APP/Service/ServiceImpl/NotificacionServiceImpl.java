@@ -112,10 +112,13 @@ public class NotificacionServiceImpl implements NotificacionService {
     }
 
     @Override
-    public List<Map<String, Object>> obtenerHistorialChat(String search) {
+    public List<Map<String, Object>> obtenerHistorialChat(String search, String usernameAutenticado) {
         String filtro = search != null ? search.trim().toLowerCase() : "";
+        Usuario usuarioAutenticado = usuarioRepository.findByUsuario(usernameAutenticado)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
         return notificacionRepository.findAll().stream()
                 .filter(this::esMensajeChat)
+                .filter(n -> participaEnChat(n, usuarioAutenticado.getId()))
                 .filter(n -> filtro.isBlank() || contieneFiltroNotificacion(n, filtro))
                 .sorted(Comparator.comparing(Notificacion::getFechaEnvio, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
                 .map(this::mapearNotificacionDetalle)
@@ -129,8 +132,8 @@ public class NotificacionServiceImpl implements NotificacionService {
         }
         Usuario remitente = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
-        if (remitente.getRol() != Usuario.Rol.ADMINISTRADOR && remitente.getRol() != Usuario.Rol.CELADOR) {
-            throw new IllegalArgumentException("Solo ADMINISTRADOR o CELADOR pueden enviar mensajes de chat");
+        if (!puedeUsarChat(remitente)) {
+            throw new IllegalArgumentException("No tienes permisos para enviar mensajes de chat");
         }
 
         String mensaje = extraerTexto(payload, "mensaje");
@@ -151,13 +154,18 @@ public class NotificacionServiceImpl implements NotificacionService {
         }
         Usuario destinatario = usuarioRepository.findById(destinatarioId)
                 .orElseThrow(() -> new IllegalArgumentException("Destinatario no encontrado"));
-        if (destinatario.getRol() != Usuario.Rol.ADMINISTRADOR && destinatario.getRol() != Usuario.Rol.CELADOR) {
-            throw new IllegalArgumentException("Solo se puede enviar mensajes a ADMIN o CELADOR");
+        if (!puedeUsarChat(destinatario)) {
+            throw new IllegalArgumentException("El destinatario no puede recibir mensajes de chat");
+        }
+        if (remitente.getRol() == Usuario.Rol.RESIDENTE
+                && destinatario.getRol() != Usuario.Rol.ADMINISTRADOR
+                && destinatario.getRol() != Usuario.Rol.CELADOR) {
+            throw new IllegalArgumentException("Los residentes solo pueden escribir a ADMINISTRADOR o CELADOR");
         }
 
         Notificacion notificacion = new Notificacion();
-        notificacion.setUsuario(remitente);
-        notificacion.setMensaje("[CHAT] " + mensaje.trim());
+        notificacion.setUsuario(destinatario);
+        notificacion.setMensaje(construirPayloadChat(remitente.getId(), destinatario.getId(), mensaje.trim()));
         notificacion.setFechaEnvio(LocalDateTime.now());
         notificacion.setUsuariosEtiquetados(destinatarioId.toString());
         return notificacionRepository.save(notificacion);
@@ -261,7 +269,59 @@ public class NotificacionServiceImpl implements NotificacionService {
             return false;
         }
         String mensaje = notificacion.getMensaje() != null ? notificacion.getMensaje().trim().toLowerCase() : "";
-        return mensaje.startsWith("[chat]");
+        return mensaje.startsWith("[chat]") || mensaje.startsWith("chat|");
+    }
+
+    private boolean puedeUsarChat(Usuario usuario) {
+        return usuario != null
+                && (usuario.getRol() == Usuario.Rol.ADMINISTRADOR
+                || usuario.getRol() == Usuario.Rol.CELADOR
+                || usuario.getRol() == Usuario.Rol.RESIDENTE);
+    }
+
+    private boolean participaEnChat(Notificacion notificacion, Long usuarioId) {
+        if (usuarioId == null) {
+            return false;
+        }
+        Long emisorId = extraerParticipanteChat(notificacion, "from");
+        Long receptorId = extraerParticipanteChat(notificacion, "to");
+        return usuarioId.equals(emisorId) || usuarioId.equals(receptorId);
+    }
+
+    private Long extraerParticipanteChat(Notificacion notificacion, String campo) {
+        if (notificacion == null || notificacion.getMensaje() == null) {
+            return null;
+        }
+        String mensaje = notificacion.getMensaje().trim();
+        if (mensaje.toLowerCase().startsWith("chat|")) {
+            String prefijo = campo + "=";
+            String[] partes = mensaje.split("\\|");
+            for (String parte : partes) {
+                if (parte.startsWith(prefijo)) {
+                    try {
+                        return Long.parseLong(parte.substring(prefijo.length()));
+                    } catch (NumberFormatException ex) {
+                        return null;
+                    }
+                }
+            }
+        }
+        if ("from".equals(campo) && notificacion.getUsuario() != null) {
+            return notificacion.getUsuario().getId();
+        }
+        if ("to".equals(campo) && notificacion.getUsuariosEtiquetados() != null) {
+            try {
+                return Long.parseLong(notificacion.getUsuariosEtiquetados().trim());
+            } catch (NumberFormatException ex) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private String construirPayloadChat(Long emisorId, Long receptorId, String mensaje) {
+        String textoSeguro = mensaje.replace("|", "/");
+        return "CHAT|from=" + emisorId + "|to=" + receptorId + "|msg=" + textoSeguro;
     }
 
     private boolean contieneFiltroNotificacion(Notificacion notificacion, String filtro) {
