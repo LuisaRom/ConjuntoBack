@@ -64,12 +64,12 @@ public class NotificacionController {
     }
 
     @PostMapping
-    public ResponseEntity<?> guardar(@RequestBody Notificacion notificacion) {
+    public ResponseEntity<?> guardar(@RequestBody Notificacion notificacion, Authentication authentication) {
         try {
             if (notificacion.getFechaEnvio() == null) {
                 notificacion.setFechaEnvio(java.time.LocalDateTime.now());
             }
-            return ResponseEntity.ok(notificacionService.guardar(notificacion));
+            return ResponseEntity.ok(notificacionService.guardar(notificacion, authentication.getName()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

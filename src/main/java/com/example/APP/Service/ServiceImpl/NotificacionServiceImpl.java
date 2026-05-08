@@ -79,6 +79,17 @@ public class NotificacionServiceImpl implements NotificacionService {
     }
 
     @Override
+    public Notificacion guardar(Notificacion notificacion, String usernameAutenticado) {
+        if (usernameAutenticado == null || usernameAutenticado.isBlank()) {
+            throw new IllegalArgumentException("No hay usuario autenticado");
+        }
+        Usuario usuarioAutenticado = usuarioRepository.findByUsuario(usernameAutenticado)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
+        notificacion.setUsuario(usuarioAutenticado);
+        return guardar(notificacion);
+    }
+
+    @Override
     public Notificacion actualizar(Long id, Notificacion notificacion) {
         return notificacionRepository.findById(id)
                 .map(existing -> {

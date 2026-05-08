@@ -73,6 +73,11 @@ public class Mascota {
         this.fotoUrl = fotoUrl;
     }
 
+    @Transient
+    public String getFotoHttpUrl() {
+        return id != null ? "/api/mascotas/" + id + "/foto" : null;
+    }
+
     public Usuario getUsuario() {
         return usuario;
     }

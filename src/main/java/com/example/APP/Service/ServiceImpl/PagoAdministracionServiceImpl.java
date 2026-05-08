@@ -14,7 +14,9 @@ import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -24,6 +26,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class PagoAdministracionServiceImpl implements PagoAdministracionService {
+
+    private static final int DIA_LIMITE_PAGO_ADMINISTRACION = 5;
 
     @Autowired
     private PagoAdministracionRepository pagoAdministracionRepository;
@@ -80,6 +84,12 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         String periodo = extraerTexto(payload.get("periodo"));
         if (periodo == null || periodo.isBlank()) {
             periodo = YearMonth.now().toString();
+        }
+        YearMonth periodoPago;
+        try {
+            periodoPago = YearMonth.parse(periodo);
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("El periodo debe tener formato yyyy-MM");
         }
 
         String referenciaExterna = "ADM-" + usuario.getId() + "-" + UUID.randomUUID();
@@ -155,6 +165,12 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         salida.put("mercadoPagoPreferenceId", body.get("id").toString());
         salida.put("initPoint", initPoint);
         salida.put("checkoutUrl", initPoint);
+        salida.put("periodo", periodo);
+        salida.put("diaLimitePago", DIA_LIMITE_PAGO_ADMINISTRACION);
+        salida.put("fechaLimitePago", periodoPago.atDay(DIA_LIMITE_PAGO_ADMINISTRACION));
+        salida.put("estadoAdministracion", LocalDate.now().isAfter(periodoPago.atDay(DIA_LIMITE_PAGO_ADMINISTRACION))
+                ? "EN_MORA"
+                : "PENDIENTE_EN_PLAZO");
         salida.put("mensaje", "Pago creado. Redirige al usuario a Mercado Pago.");
         return salida;
     }
@@ -196,9 +212,14 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
 
     @Override
     public List<Map<String, Object>> listarPagosAdmin() {
-        return pagoAdministracionRepository.findAllByOrderByIdDesc()
+        YearMonth periodoActual = YearMonth.now();
+        LocalDate fechaLimite = periodoActual.atDay(DIA_LIMITE_PAGO_ADMINISTRACION);
+        LocalDate hoy = LocalDate.now();
+        List<PagoAdministracion> pagos = pagoAdministracionRepository.findAllByOrderByIdDesc();
+
+        return usuarioRepository.findByRolOrderByNombreAsc(Usuario.Rol.RESIDENTE)
                 .stream()
-                .map(this::mapearResumenPago)
+                .map(residente -> mapearEstadoPagoResidente(residente, pagos, periodoActual, fechaLimite, hoy))
                 .collect(Collectors.toList());
     }
 
@@ -254,11 +275,88 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         item.put("mercadoPagoPreferenceId", pago.getMercadoPagoPreferenceId());
         item.put("mercadoPagoPaymentId", pago.getMercadoPagoPaymentId());
         item.put("checkoutUrl", pago.getCheckoutUrl());
+        agregarDatosVencimientoPago(item, pago);
         if (pago.getUsuario() != null) {
             item.put("usuarioId", pago.getUsuario().getId());
             item.put("usuarioNombre", pago.getUsuario().getNombre());
             item.put("usuarioUsername", pago.getUsuario().getUsuario());
         }
         return item;
+    }
+
+    private void agregarDatosVencimientoPago(Map<String, Object> item, PagoAdministracion pago) {
+        if (pago.getPeriodo() == null || pago.getPeriodo().isBlank()) {
+            return;
+        }
+        try {
+            LocalDate fechaLimite = YearMonth.parse(pago.getPeriodo()).atDay(DIA_LIMITE_PAGO_ADMINISTRACION);
+            item.put("diaLimitePago", DIA_LIMITE_PAGO_ADMINISTRACION);
+            item.put("fechaLimitePago", fechaLimite);
+            item.put("pagoExtemporaneo", pago.getFechaPago() != null && pago.getFechaPago().toLocalDate().isAfter(fechaLimite));
+        } catch (Exception ignored) {
+            // Mantiene compatibilidad con pagos antiguos que puedan tener periodo no ISO yyyy-MM.
+        }
+    }
+
+    private Map<String, Object> mapearEstadoPagoResidente(
+            Usuario residente,
+            List<PagoAdministracion> todosLosPagos,
+            YearMonth periodoActual,
+            LocalDate fechaLimite,
+            LocalDate hoy
+    ) {
+        List<PagoAdministracion> pagosResidente = todosLosPagos.stream()
+                .filter(pago -> pago.getUsuario() != null && residente.getId().equals(pago.getUsuario().getId()))
+                .toList();
+        List<PagoAdministracion> pagosPeriodo = pagosResidente.stream()
+                .filter(pago -> periodoActual.toString().equals(pago.getPeriodo()))
+                .toList();
+        Optional<PagoAdministracion> pagoAprobadoPeriodo = pagosPeriodo.stream()
+                .filter(pago -> pago.getEstadoPago() == PagoAdministracion.EstadoPago.APROBADO)
+                .findFirst();
+        Optional<PagoAdministracion> ultimoPagoPeriodo = pagosPeriodo.stream().findFirst();
+
+        String estadoAdministracion = calcularEstadoAdministracion(pagoAprobadoPeriodo, fechaLimite, hoy);
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("usuarioId", residente.getId());
+        item.put("usuarioNombre", residente.getNombre());
+        item.put("usuarioUsername", residente.getUsuario());
+        item.put("torre", residente.getTorre());
+        item.put("apartamento", residente.getApartamento());
+        item.put("periodoActual", periodoActual.toString());
+        item.put("diaLimitePago", DIA_LIMITE_PAGO_ADMINISTRACION);
+        item.put("fechaLimitePago", fechaLimite);
+        item.put("estadoAdministracion", estadoAdministracion);
+        item.put("estaAlDia", "AL_DIA".equals(estadoAdministracion));
+        item.put("estaEnMora", "EN_MORA".equals(estadoAdministracion));
+        item.put("diasMora", calcularDiasMora(estadoAdministracion, fechaLimite, hoy));
+        item.put("pagoPeriodoActual", pagoAprobadoPeriodo.or(() -> ultimoPagoPeriodo)
+                .map(this::mapearResumenPago)
+                .orElse(null));
+        item.put("historialPagos", pagosResidente.stream()
+                .map(this::mapearResumenPago)
+                .toList());
+        return item;
+    }
+
+    private String calcularEstadoAdministracion(
+            Optional<PagoAdministracion> pagoAprobadoPeriodo,
+            LocalDate fechaLimite,
+            LocalDate hoy
+    ) {
+        if (pagoAprobadoPeriodo.isPresent()) {
+            LocalDate fechaPago = pagoAprobadoPeriodo.get().getFechaPago() != null
+                    ? pagoAprobadoPeriodo.get().getFechaPago().toLocalDate()
+                    : hoy;
+            return fechaPago.isAfter(fechaLimite) ? "PAGADO_EN_MORA" : "AL_DIA";
+        }
+        return hoy.isAfter(fechaLimite) ? "EN_MORA" : "PENDIENTE_EN_PLAZO";
+    }
+
+    private long calcularDiasMora(String estadoAdministracion, LocalDate fechaLimite, LocalDate hoy) {
+        if (!"EN_MORA".equals(estadoAdministracion)) {
+            return 0;
+        }
+        return Math.max(0, ChronoUnit.DAYS.between(fechaLimite, hoy));
     }
 }

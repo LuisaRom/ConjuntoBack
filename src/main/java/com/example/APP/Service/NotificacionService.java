@@ -12,6 +12,7 @@ public interface NotificacionService {
     List<Notificacion> obtenerTodos();
     Optional<Notificacion> obtenerPorId(Long id);
     Notificacion guardar(Notificacion notificacion);
+    Notificacion guardar(Notificacion notificacion, String usernameAutenticado);
     Notificacion actualizar(Long id, Notificacion notificacion);
     List<Map<String, Object>> obtenerNovedades(String search, String usernameAutenticado);
     List<Map<String, Object>> obtenerHistorialChat(String search, String usernameAutenticado);

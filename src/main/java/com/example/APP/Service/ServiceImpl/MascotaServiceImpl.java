@@ -41,18 +41,33 @@ public class MascotaServiceImpl implements MascotaService {
     public Mascota guardar(Mascota mascota) {
         return mascotaRepository.save(mascota);
     }
+
+    @Override
+    public Mascota guardar(Mascota mascota, String usernameAutenticado) {
+        if (usernameAutenticado == null || usernameAutenticado.isBlank()) {
+            throw new IllegalArgumentException("No hay usuario autenticado");
+        }
+        Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        if (usuario.getRol() != Usuario.Rol.RESIDENTE) {
+            throw new IllegalArgumentException("Solo los residentes pueden crear publicaciones de mascotas");
+        }
+        if (mascota == null) {
+            throw new IllegalArgumentException("La publicación de mascota es obligatoria");
+        }
+        validarCamposMascota(mascota.getNombre(), mascota.getTipo(), mascota.getDescripcion());
+        mascota.setId(null);
+        mascota.setUsuario(usuario);
+        mascota.setNombre(mascota.getNombre().trim());
+        mascota.setTipo(mascota.getTipo().trim());
+        mascota.setDescripcion(mascota.getDescripcion().trim());
+        mascota.setRaza(mascota.getRaza() != null ? mascota.getRaza().trim() : "");
+        return mascotaRepository.save(mascota);
+    }
     
     @Override
     public Mascota crearMascota(String nombre, String tipo, String descripcion, String raza, String usernameAutenticado, MultipartFile foto) {
-        if (nombre == null || nombre.isBlank()) {
-            throw new IllegalArgumentException("El campo nombre es obligatorio");
-        }
-        if (tipo == null || tipo.isBlank()) {
-            throw new IllegalArgumentException("El campo tipo es obligatorio");
-        }
-        if (descripcion == null || descripcion.isBlank()) {
-            throw new IllegalArgumentException("El campo descripcion es obligatorio");
-        }
+        validarCamposMascota(nombre, tipo, descripcion);
         if (usernameAutenticado == null || usernameAutenticado.isBlank()) {
             throw new IllegalArgumentException("No hay usuario autenticado");
         }
@@ -63,6 +78,9 @@ public class MascotaServiceImpl implements MascotaService {
         
         Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        if (usuario.getRol() != Usuario.Rol.RESIDENTE) {
+            throw new IllegalArgumentException("Solo los residentes pueden crear publicaciones de mascotas");
+        }
         
         String fotoUrl = guardarFoto(foto);
         
@@ -115,6 +133,18 @@ public class MascotaServiceImpl implements MascotaService {
         long maxBytes = 5L * 1024L * 1024L;
         if (foto.getSize() > maxBytes) {
             throw new IllegalArgumentException("La foto no debe superar 5MB");
+        }
+    }
+
+    private void validarCamposMascota(String nombre, String tipo, String descripcion) {
+        if (nombre == null || nombre.isBlank()) {
+            throw new IllegalArgumentException("El campo nombre es obligatorio");
+        }
+        if (tipo == null || tipo.isBlank()) {
+            throw new IllegalArgumentException("El campo tipo es obligatorio");
+        }
+        if (descripcion == null || descripcion.isBlank()) {
+            throw new IllegalArgumentException("El campo descripcion es obligatorio");
         }
     }
 }

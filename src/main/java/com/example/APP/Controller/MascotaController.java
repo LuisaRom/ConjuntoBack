@@ -49,8 +49,11 @@ public class MascotaController {
     }
 
     @PostMapping
-    public Mascota guardar(@RequestBody Mascota mascota) {
-        return mascotaService.guardar(mascota);
+    public Mascota guardar(@RequestBody Mascota mascota, Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new IllegalArgumentException("No hay usuario autenticado");
+        }
+        return mascotaService.guardar(mascota, authentication.getName());
     }
     
     @PostMapping(value = "/crear", consumes = {"multipart/form-data"})

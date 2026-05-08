@@ -11,6 +11,7 @@ public interface MascotaService {
     List<Mascota> obtenerTodos();
     Optional<Mascota> obtenerPorId(Long id);
     Mascota guardar(Mascota mascota);
+    Mascota guardar(Mascota mascota, String usernameAutenticado);
     Mascota crearMascota(String nombre, String tipo, String descripcion, String raza, String usernameAutenticado, MultipartFile foto);
     void eliminar(Long id);
 }

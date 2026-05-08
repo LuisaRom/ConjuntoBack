@@ -1,0 +1,12 @@
+---
+description: Priorizar cambios de backend y reportar impacto en frontend
+alwaysApply: true
+---
+
+# Cambios Solicitados
+
+- Cuando el usuario pida implementar, corregir o revisar una funcionalidad, modifica solo el backend por defecto.
+- No edites archivos del frontend salvo que el usuario lo pida explícitamente en ese mensaje.
+- Después de completar el cambio de backend, explica de forma concreta qué habría que modificar o probar en el frontend.
+- Si el problema requiere frontend para poder resolverse completamente, primero termina lo posible en backend y luego informa el pendiente de frontend.
+- Mantén validaciones enfocadas en backend, por ejemplo Maven, lints o pruebas disponibles del proyecto backend.
