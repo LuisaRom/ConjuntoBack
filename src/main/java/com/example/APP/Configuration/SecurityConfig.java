@@ -60,7 +60,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/notificaciones/chat/enviar").hasAnyRole("ADMINISTRADOR", "CELADOR")
                         .requestMatchers(HttpMethod.POST, "/api/notificaciones/recibos/enviar").hasAnyRole("ADMINISTRADOR", "CELADOR")
                         .requestMatchers(HttpMethod.GET, "/api/notificaciones/**").hasAnyRole("ADMINISTRADOR", "CELADOR", "RESIDENTE")
-                        .requestMatchers(HttpMethod.POST, "/api/notificaciones").hasAnyRole("ADMINISTRADOR", "RESIDENTE")
+                        .requestMatchers(HttpMethod.POST, "/api/notificaciones").hasAnyRole("ADMINISTRADOR", "CELADOR", "RESIDENTE")
                         .requestMatchers(HttpMethod.PUT, "/api/notificaciones/**").hasRole("ADMINISTRADOR")
                         .requestMatchers(HttpMethod.DELETE, "/api/notificaciones/**").hasRole("ADMINISTRADOR")
                         .requestMatchers("/api/usuarios/**").hasRole("ADMINISTRADOR")

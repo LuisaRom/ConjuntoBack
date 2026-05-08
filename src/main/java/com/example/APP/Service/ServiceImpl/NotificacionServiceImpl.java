@@ -62,7 +62,7 @@ public class NotificacionServiceImpl implements NotificacionService {
                 throw new RuntimeException("Usuario no encontrado con id: " + usuarioId);
             }
         } else if (notificacion.getUsuario() == null) {
-            throw new RuntimeException("La notificación debe tener un usuario asignado");
+            throw new RuntimeException("La notificaci?n debe tener un usuario asignado");
         }
         
         // Si no hay fecha, asignar la fecha actual
@@ -72,7 +72,7 @@ public class NotificacionServiceImpl implements NotificacionService {
         validarMultimediaOpcional(notificacion.getImagenUrl(), "imagenUrl");
         validarMultimediaOpcional(notificacion.getVideoUrl(), "videoUrl");
         
-        System.out.println("NotificacionServiceImpl: Guardando notificación - Mensaje: " + notificacion.getMensaje() + 
+        System.out.println("NotificacionServiceImpl: Guardando notificaci?n - Mensaje: " + notificacion.getMensaje() + 
                            ", Usuario ID: " + (notificacion.getUsuario() != null ? notificacion.getUsuario().getId() : "null"));
         
         return notificacionRepository.save(notificacion);
@@ -85,7 +85,15 @@ public class NotificacionServiceImpl implements NotificacionService {
         }
         Usuario usuarioAutenticado = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
-        notificacion.setUsuario(usuarioAutenticado);
+        if (usuarioAutenticado.getRol() == Usuario.Rol.CELADOR) {
+            if (!esNotificacionRecibo(notificacion)) {
+                throw new IllegalArgumentException("El celador solo puede enviar notificaciones de recibos");
+            }
+            Usuario destinatario = resolverResidenteDesdeNotificacion(notificacion);
+            notificacion.setUsuario(destinatario);
+        } else {
+            notificacion.setUsuario(usuarioAutenticado);
+        }
         return guardar(notificacion);
     }
 
@@ -103,7 +111,7 @@ public class NotificacionServiceImpl implements NotificacionService {
                     existing.setUsuario(notificacion.getUsuario());
                     return notificacionRepository.save(existing);
                 })
-                .orElseThrow(() -> new RuntimeException("Notificación no encontrada con id: " + id));
+                .orElseThrow(() -> new RuntimeException("Notificaci?n no encontrada con id: " + id));
     }
 
     @Override
@@ -161,7 +169,7 @@ public class NotificacionServiceImpl implements NotificacionService {
         try {
             destinatarioId = Long.parseLong(destinatarioIdObj.toString());
         } catch (NumberFormatException ex) {
-            throw new IllegalArgumentException("destinatarioId inválido");
+            throw new IllegalArgumentException("destinatarioId inv?lido");
         }
         Usuario destinatario = usuarioRepository.findById(destinatarioId)
                 .orElseThrow(() -> new IllegalArgumentException("Destinatario no encontrado"));
@@ -186,9 +194,13 @@ public class NotificacionServiceImpl implements NotificacionService {
     public List<Map<String, Object>> listarUsuariosParaNotificaciones(String search) {
         String filtro = search != null ? search.trim().toLowerCase() : "";
         return usuarioRepository.findAll().stream()
+                .filter(usuario -> usuario.getRol() == Usuario.Rol.RESIDENTE)
                 .filter(usuario -> filtro.isBlank()
-                        || (usuario.getNombre() != null && usuario.getNombre().toLowerCase().contains(filtro))
-                        || (usuario.getUsuario() != null && usuario.getUsuario().toLowerCase().contains(filtro)))
+                        || contieneTexto(usuario.getNombre(), filtro)
+                        || contieneTexto(usuario.getUsuario(), filtro)
+                        || contieneTexto(usuario.getTorre(), filtro)
+                        || contieneTexto(usuario.getApartamento(), filtro)
+                        || contieneTexto(usuario.getTorre() + " " + usuario.getApartamento(), filtro))
                 .sorted(Comparator
                         .comparing(Usuario::getTorre, Comparator.nullsLast(String::compareToIgnoreCase))
                         .thenComparing(Usuario::getApartamento, Comparator.nullsLast(String::compareToIgnoreCase))
@@ -207,7 +219,7 @@ public class NotificacionServiceImpl implements NotificacionService {
         if (tipoEnvio == null || tipoEnvio.isBlank()) {
             tipoEnvio = "todos";
         }
-        List<Usuario> destinatarios = resolverDestinatariosRecibo(tipoEnvio, payload.get("usuarioId"));
+        List<Usuario> destinatarios = resolverDestinatariosRecibo(tipoEnvio, payload);
         String imagenUrl = extraerTexto(payload, "imagenUrl");
         String videoUrl = extraerTexto(payload, "videoUrl");
         validarMultimediaOpcional(imagenUrl, "imagenUrl");
@@ -342,6 +354,10 @@ public class NotificacionServiceImpl implements NotificacionService {
         return mensaje.contains(filtro) || nombre.contains(filtro);
     }
 
+    private boolean contieneTexto(String valor, String filtro) {
+        return valor != null && valor.toLowerCase().contains(filtro);
+    }
+
     private Map<String, Object> mapearNotificacionDetalle(Notificacion notificacion) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("id", notificacion.getId());
@@ -354,29 +370,81 @@ public class NotificacionServiceImpl implements NotificacionService {
         return item;
     }
 
-    private List<Usuario> resolverDestinatariosRecibo(String tipoEnvio, Object usuarioIdObj) {
+    private List<Usuario> resolverDestinatariosRecibo(String tipoEnvio, Map<String, Object> payload) {
         String tipo = tipoEnvio.trim().toLowerCase();
         if ("todos".equals(tipo)) {
             return usuarioRepository.findByRolOrderByNombreAsc(Usuario.Rol.RESIDENTE);
         }
+        if ("varios".equals(tipo) || "multiple".equals(tipo) || "multiples".equals(tipo)) {
+            return resolverResidentesPorIds(payload.get("usuarioIds"));
+        }
+        Object usuarioIdObj = payload.get("usuarioIds") != null ? payload.get("usuarioIds") : payload.get("usuarioId");
         if (!"individual".equals(tipo)) {
-            throw new IllegalArgumentException("tipoEnvio inválido. Usa 'todos' o 'individual'");
+            throw new IllegalArgumentException("tipoEnvio inv?lido. Usa 'todos' o 'individual'");
         }
-        if (usuarioIdObj == null || usuarioIdObj.toString().isBlank()) {
-            throw new IllegalArgumentException("usuarioId es obligatorio para tipoEnvio individual");
+        return resolverResidentesPorIds(usuarioIdObj);
+    }
+
+    private List<Usuario> resolverResidentesPorIds(Object idsObj) {
+        List<Long> ids = extraerIds(idsObj);
+        if (ids.isEmpty()) {
+            throw new IllegalArgumentException("Debes seleccionar al menos un residente");
         }
-        Long usuarioId;
+        List<Usuario> residentes = new ArrayList<>();
+        for (Long usuarioId : ids) {
+            Usuario usuario = usuarioRepository.findById(usuarioId)
+                    .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado: " + usuarioId));
+            if (usuario.getRol() != Usuario.Rol.RESIDENTE) {
+                throw new IllegalArgumentException("Todos los destinatarios deben tener rol RESIDENTE");
+            }
+            residentes.add(usuario);
+        }
+        return residentes.stream().distinct().toList();
+    }
+
+    private List<Long> extraerIds(Object idsObj) {
+        if (idsObj == null) {
+            return List.of();
+        }
+        if (idsObj instanceof List<?> lista) {
+            List<Long> ids = new ArrayList<>();
+            for (Object item : lista) {
+                ids.add(parseLongId(item));
+            }
+            return ids;
+        }
+        String texto = idsObj.toString().replace("[", "").replace("]", "");
+        if (texto.isBlank()) {
+            return List.of();
+        }
+        if (texto.contains(",")) {
+            List<Long> ids = new ArrayList<>();
+            for (String parte : texto.split(",")) {
+                ids.add(parseLongId(parte.trim()));
+            }
+            return ids;
+        }
+        return List.of(parseLongId(texto));
+    }
+
+    private Long parseLongId(Object value) {
         try {
-            usuarioId = Long.parseLong(usuarioIdObj.toString());
+            return Long.parseLong(value.toString());
         } catch (NumberFormatException ex) {
-            throw new IllegalArgumentException("usuarioId inválido");
+            throw new IllegalArgumentException("ID de residente invalido: " + value);
         }
-        Usuario usuario = usuarioRepository.findById(usuarioId)
-                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
-        if (usuario.getRol() != Usuario.Rol.RESIDENTE) {
-            throw new IllegalArgumentException("El usuario destino debe ser RESIDENTE");
+    }
+
+    private Usuario resolverResidenteDesdeNotificacion(Notificacion notificacion) {
+        if (notificacion == null || notificacion.getUsuario() == null || notificacion.getUsuario().getId() == null) {
+            throw new IllegalArgumentException("Debes seleccionar un residente destinatario");
         }
-        return List.of(usuario);
+        Usuario destinatario = usuarioRepository.findById(notificacion.getUsuario().getId())
+                .orElseThrow(() -> new IllegalArgumentException("Usuario destinatario no encontrado"));
+        if (destinatario.getRol() != Usuario.Rol.RESIDENTE) {
+            throw new IllegalArgumentException("El destinatario debe tener rol RESIDENTE");
+        }
+        return destinatario;
     }
 
     private Map<String, Object> mapearUsuarioResumen(Usuario usuario) {
@@ -384,10 +452,25 @@ public class NotificacionServiceImpl implements NotificacionService {
         item.put("id", usuario.getId());
         item.put("nombre", usuario.getNombre());
         item.put("username", usuario.getUsuario());
+        item.put("usuario", usuario.getUsuario());
         item.put("rol", usuario.getRol());
         item.put("torre", usuario.getTorre());
         item.put("apartamento", usuario.getApartamento());
+        item.put("label", construirLabelResidente(usuario));
         return item;
+    }
+
+    private String construirLabelResidente(Usuario usuario) {
+        String nombre = usuario.getNombre() != null && !usuario.getNombre().isBlank()
+                ? usuario.getNombre()
+                : usuario.getUsuario();
+        String torre = usuario.getTorre() != null && !usuario.getTorre().isBlank()
+                ? "Torre " + usuario.getTorre()
+                : "Torre sin asignar";
+        String apartamento = usuario.getApartamento() != null && !usuario.getApartamento().isBlank()
+                ? "Apto " + usuario.getApartamento()
+                : "Apto sin asignar";
+        return nombre + " - " + torre + " - " + apartamento;
     }
 
     private String extraerTexto(Map<String, Object> payload, String key) {
@@ -401,22 +484,22 @@ public class NotificacionServiceImpl implements NotificacionService {
         }
         String valor = url.trim();
         if (!(valor.startsWith("http://") || valor.startsWith("https://"))) {
-            throw new IllegalArgumentException(campo + " inválida: debe ser URL pública http(s)");
+            throw new IllegalArgumentException(campo + " inv?lida: debe ser URL p?blica http(s)");
         }
         try {
             URI uri = URI.create(valor);
             if (uri.getHost() == null || uri.getHost().isBlank()) {
-                throw new IllegalArgumentException(campo + " inválida: host no válido");
+                throw new IllegalArgumentException(campo + " inv?lida: host no v?lido");
             }
             String host = uri.getHost().toLowerCase();
             if ("localhost".equals(host) || host.startsWith("127.") || "0.0.0.0".equals(host)) {
-                throw new IllegalArgumentException(campo + " inválida: no se permiten URLs locales");
+                throw new IllegalArgumentException(campo + " inv?lida: no se permiten URLs locales");
             }
         } catch (IllegalArgumentException ex) {
-            if (ex.getMessage() != null && ex.getMessage().contains("inválida")) {
+            if (ex.getMessage() != null && ex.getMessage().contains("inv?lida")) {
                 throw ex;
             }
-            throw new IllegalArgumentException(campo + " inválida: formato no reconocido");
+            throw new IllegalArgumentException(campo + " inv?lida: formato no reconocido");
         }
     }
 }
