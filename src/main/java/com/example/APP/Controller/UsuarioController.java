@@ -77,6 +77,11 @@ public class UsuarioController {
                 .collect(Collectors.toList());
     }
 
+    @PostMapping("/residentes")
+    public List<Map<String, Object>> obtenerResidentesPost() {
+        return obtenerResidentes();
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<UsuarioResponseDto> obtenerPorId(@PathVariable Long id) {
         return usuarioService.obtenerPorId(id)
