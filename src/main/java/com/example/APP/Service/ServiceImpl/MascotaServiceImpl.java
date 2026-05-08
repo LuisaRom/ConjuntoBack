@@ -55,19 +55,19 @@ public class MascotaServiceImpl implements MascotaService {
         if (mascota == null) {
             throw new IllegalArgumentException("La publicación de mascota es obligatoria");
         }
-        validarCamposMascota(mascota.getNombre(), mascota.getTipo(), mascota.getDescripcion());
+        validarCamposMascota(mascota.getNombre(), mascota.getTipo());
         mascota.setId(null);
         mascota.setUsuario(usuario);
         mascota.setNombre(mascota.getNombre().trim());
         mascota.setTipo(mascota.getTipo().trim());
-        mascota.setDescripcion(mascota.getDescripcion().trim());
+        mascota.setDescripcion(normalizarDescripcion(mascota.getDescripcion(), mascota.getRaza(), mascota.getTipo()));
         mascota.setRaza(mascota.getRaza() != null ? mascota.getRaza().trim() : "");
         return mascotaRepository.save(mascota);
     }
     
     @Override
     public Mascota crearMascota(String nombre, String tipo, String descripcion, String raza, String usernameAutenticado, MultipartFile foto) {
-        validarCamposMascota(nombre, tipo, descripcion);
+        validarCamposMascota(nombre, tipo);
         if (usernameAutenticado == null || usernameAutenticado.isBlank()) {
             throw new IllegalArgumentException("No hay usuario autenticado");
         }
@@ -87,7 +87,7 @@ public class MascotaServiceImpl implements MascotaService {
         Mascota mascota = new Mascota();
         mascota.setNombre(nombre.trim());
         mascota.setTipo(tipo.trim());
-        mascota.setDescripcion(descripcion.trim());
+        mascota.setDescripcion(normalizarDescripcion(descripcion, raza, tipo));
         mascota.setRaza(raza != null ? raza.trim() : "");
         mascota.setFotoUrl(fotoUrl);
         mascota.setUsuario(usuario);
@@ -136,15 +136,22 @@ public class MascotaServiceImpl implements MascotaService {
         }
     }
 
-    private void validarCamposMascota(String nombre, String tipo, String descripcion) {
+    private void validarCamposMascota(String nombre, String tipo) {
         if (nombre == null || nombre.isBlank()) {
             throw new IllegalArgumentException("El campo nombre es obligatorio");
         }
         if (tipo == null || tipo.isBlank()) {
             throw new IllegalArgumentException("El campo tipo es obligatorio");
         }
-        if (descripcion == null || descripcion.isBlank()) {
-            throw new IllegalArgumentException("El campo descripcion es obligatorio");
+    }
+
+    private String normalizarDescripcion(String descripcion, String raza, String tipo) {
+        if (descripcion != null && !descripcion.isBlank()) {
+            return descripcion.trim();
         }
+        if (raza != null && !raza.isBlank()) {
+            return raza.trim();
+        }
+        return "Publicación de mascota " + tipo.trim();
     }
 }

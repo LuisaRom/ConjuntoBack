@@ -9,6 +9,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -48,15 +49,38 @@ public class MascotaController {
         return mascotaService.obtenerPorId(id);
     }
 
-    @PostMapping
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public Mascota guardar(@RequestBody Mascota mascota, Authentication authentication) {
         if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
             throw new IllegalArgumentException("No hay usuario autenticado");
         }
         return mascotaService.guardar(mascota, authentication.getName());
     }
+
+    @PostMapping(value = "/crear", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public Mascota crearJson(@RequestBody Mascota mascota, Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new IllegalArgumentException("No hay usuario autenticado");
+        }
+        return mascotaService.guardar(mascota, authentication.getName());
+    }
+
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> guardarMultipart(
+            @RequestParam(value = "nombre", required = false) String nombre,
+            @RequestParam(value = "nombreMascota", required = false) String nombreMascota,
+            @RequestParam(value = "tipo", required = false) String tipo,
+            @RequestParam(value = "tipoMascota", required = false) String tipoMascota,
+            @RequestParam(value = "descripcion", required = false) String descripcion,
+            @RequestParam(value = "raza", required = false) String raza,
+            @RequestParam(value = "foto", required = false) MultipartFile foto,
+            @RequestParam(value = "imagen", required = false) MultipartFile imagen,
+            Authentication authentication
+    ) {
+        return crear(nombre, nombreMascota, tipo, tipoMascota, descripcion, raza, foto, imagen, authentication);
+    }
     
-    @PostMapping(value = "/crear", consumes = {"multipart/form-data"})
+    @PostMapping(value = "/crear", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> crear(
             @RequestParam(value = "nombre", required = false) String nombre,
             @RequestParam(value = "nombreMascota", required = false) String nombreMascota,
