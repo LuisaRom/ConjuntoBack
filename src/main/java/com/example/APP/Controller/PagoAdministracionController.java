@@ -153,8 +153,12 @@ public class PagoAdministracionController {
             return ResponseEntity.badRequest().body(Map.of("mensaje", e.getMessage()));
         } catch (Exception e) {
             log.error("Error interno al crear checkout de administracion para usuario {}", authentication.getName(), e);
+            String detalle = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("mensaje", "No fue posible iniciar el pago en linea. Intenta de nuevo en unos minutos."));
+                    .body(Map.of(
+                            "mensaje", "No fue posible iniciar el pago en linea. Intenta de nuevo en unos minutos.",
+                            "error", detalle
+                    ));
         }
     }
 

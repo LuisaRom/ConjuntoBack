@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DataAccessException;
 import jakarta.annotation.PostConstruct;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
@@ -75,14 +76,32 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         }
         if (mercadoPagoPublicKey != null && !mercadoPagoPublicKey.isBlank()
                 && mercadoPagoAccessToken.equals(mercadoPagoPublicKey)) {
-            throw new IllegalStateException(
+            log.error(
                     "MERCADOPAGO_ACCESS_TOKEN y MERCADOPAGO_PUBLIC_KEY son iguales. "
-                            + "En el backend solo va el Access Token (TEST-7403...), no la Public Key (TEST-7f88...)."
+                            + "En Render usa solo el Access Token TEST-7403..., no la Public Key TEST-7f88..."
             );
         }
         if (mercadoPagoAccessToken.contains("7f88b41a-b185-4466-914c")) {
-            throw new IllegalStateException(
+            log.error(
                     "MERCADOPAGO_ACCESS_TOKEN parece ser la Public Key. Usa el Access Token TEST-7403276532353229-..."
+            );
+        }
+    }
+
+    private void validarCredencialesMercadoPagoParaCheckout() {
+        if (mercadoPagoAccessToken == null || mercadoPagoAccessToken.isBlank()) {
+            throw new IllegalArgumentException("Falta configurar MERCADOPAGO_ACCESS_TOKEN (Access Token TEST- de prueba)");
+        }
+        if (mercadoPagoPublicKey != null && !mercadoPagoPublicKey.isBlank()
+                && mercadoPagoAccessToken.equals(mercadoPagoPublicKey)) {
+            throw new IllegalArgumentException(
+                    "MERCADOPAGO_ACCESS_TOKEN en Render es incorrecto (coincide con la Public Key). "
+                            + "Usa el Access Token largo TEST-7403276532353229-..."
+            );
+        }
+        if (mercadoPagoAccessToken.contains("7f88b41a-b185-4466-914c")) {
+            throw new IllegalArgumentException(
+                    "MERCADOPAGO_ACCESS_TOKEN parece ser la Public Key. Configura el Access Token TEST-7403276532353229-..."
             );
         }
     }
@@ -115,6 +134,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
 
     @Override
     public Map<String, Object> crearCheckoutAdministracion(Map<String, Object> payload, String usernameAutenticado) {
+        log.info("Iniciando checkout administracion para usuario={}", usernameAutenticado);
         if (payload == null || payload.isEmpty()) {
             throw new IllegalArgumentException("El cuerpo de la solicitud es obligatorio (monto y periodo)");
         }
@@ -123,9 +143,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         if (usuario.getRol() != Usuario.Rol.RESIDENTE) {
             throw new IllegalArgumentException("Solo los residentes pueden iniciar pagos de administración");
         }
-        if (mercadoPagoAccessToken == null || mercadoPagoAccessToken.isBlank()) {
-            throw new IllegalArgumentException("Falta configurar MERCADOPAGO_ACCESS_TOKEN (Access Token TEST- de prueba)");
-        }
+        validarCredencialesMercadoPagoParaCheckout();
         BigDecimal monto = extraerMontoDePayload(payload);
         if (monto.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El monto debe ser mayor a 0");
@@ -143,8 +161,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
             throw new IllegalArgumentException("El periodo debe tener formato yyyy-MM");
         }
 
-        if (pagoAdministracionRepository.existsByUsuarioIdAndPeriodoAndEstadoPago(
-                usuario.getId(), periodo, PagoAdministracion.EstadoPago.APROBADO)) {
+        if (existePagoAprobadoEnPeriodo(usuario.getId(), periodo)) {
             throw new IllegalArgumentException("Ya existe un pago aprobado para el periodo " + periodo);
         }
 
@@ -206,9 +223,29 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         pago.setReferenciaExterna(referenciaExterna);
         pago.setMercadoPagoPreferenceId(body.get("id").toString());
         pago.setCheckoutUrl(initPoint);
-        pagoAdministracionRepository.save(pago);
+        try {
+            pago = pagoAdministracionRepository.save(pago);
+        } catch (DataAccessException ex) {
+            log.error("No se pudo guardar pago pendiente en BD (usuario={}, periodo={})", usuario.getId(), periodo, ex);
+            throw new IllegalArgumentException(
+                    "No se pudo registrar el pago en la base de datos. Contacta al administrador o intenta más tarde."
+            );
+        }
 
+        log.info("Checkout creado: pagoId={}, referencia={}", pago.getId(), referenciaExterna);
         return construirSalidaCheckout(pago, body.get("id").toString(), initPoint, periodo, periodoPago);
+    }
+
+    private boolean existePagoAprobadoEnPeriodo(Long usuarioId, String periodo) {
+        try {
+            return pagoAdministracionRepository.existsByUsuarioIdAndPeriodoAndEstadoPago(
+                    usuarioId, periodo, PagoAdministracion.EstadoPago.APROBADO);
+        } catch (DataAccessException ex) {
+            log.warn("Consulta existsBy falló, usando historial en memoria (usuario={}, periodo={})", usuarioId, periodo, ex);
+            return pagoAdministracionRepository.findByUsuarioId(usuarioId).stream()
+                    .anyMatch(p -> periodo.equals(p.getPeriodo())
+                            && p.getEstadoPago() == PagoAdministracion.EstadoPago.APROBADO);
+        }
     }
 
     @Override
