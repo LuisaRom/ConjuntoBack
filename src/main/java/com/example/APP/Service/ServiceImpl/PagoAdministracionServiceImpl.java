@@ -69,6 +69,9 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
 
     @Override
     public Map<String, Object> crearCheckoutAdministracion(Map<String, Object> payload, String usernameAutenticado) {
+        if (payload == null || payload.isEmpty()) {
+            throw new IllegalArgumentException("El cuerpo de la solicitud es obligatorio (monto y periodo)");
+        }
         Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
         if (usuario.getRol() != Usuario.Rol.RESIDENTE) {
@@ -100,34 +103,36 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
             throw new IllegalArgumentException("Ya existe un pago aprobado para el periodo " + periodo);
         }
 
-        String urlBackend = resolverUrlBackend();
-        String urlRetorno = resolverUrlRetorno(payload);
-        if (urlBackend.contains("localhost") || urlBackend.contains("127.0.0.1")) {
-            log.warn("URL de backend para webhook apunta a localhost. Mercado Pago no podrá notificar en producción.");
-        }
+        String urlBackend = asegurarUrlHttpsParaMercadoPago(resolverUrlBackend());
+        String urlRetorno = asegurarUrlHttpsParaMercadoPago(resolverUrlRetorno(payload));
         log.info("Checkout MP: webhook={}, retorno={}", urlBackend + "/api/pagos/mercadopago/webhook", urlRetorno);
 
         String referenciaExterna = "ADM-" + usuario.getId() + "-" + UUID.randomUUID();
-        String successUrl = urlRetorno + "/pagos/resultado?ref=" + referenciaExterna + "&estado=aprobado";
-        String pendingUrl = urlRetorno + "/pagos/resultado?ref=" + referenciaExterna + "&estado=pendiente";
-        String failureUrl = urlRetorno + "/pagos/resultado?ref=" + referenciaExterna + "&estado=rechazado";
+        String refCodificada = URLEncoder.encode(referenciaExterna, StandardCharsets.UTF_8);
+        String successUrl = urlRetorno + "/pagos/resultado?ref=" + refCodificada + "&estado=aprobado";
+        String pendingUrl = urlRetorno + "/pagos/resultado?ref=" + refCodificada + "&estado=pendiente";
+        String failureUrl = urlRetorno + "/pagos/resultado?ref=" + refCodificada + "&estado=rechazado";
+
+        int precioEntero = monto.intValue();
+        if (precioEntero <= 0) {
+            throw new IllegalArgumentException("El monto debe ser un valor entero mayor a 0 en COP");
+        }
 
         Map<String, Object> preferencePayload = new LinkedHashMap<>();
         Map<String, Object> item = new LinkedHashMap<>();
-        item.put("title", concepto + " " + periodo);
+        item.put("title", (concepto + " " + periodo).substring(0, Math.min(127, (concepto + " " + periodo).length())));
         item.put("quantity", 1);
         item.put("currency_id", "COP");
-        item.put("unit_price", monto);
+        item.put("unit_price", precioEntero);
         preferencePayload.put("items", List.of(item));
         preferencePayload.put("external_reference", referenciaExterna);
-        preferencePayload.put("statement_descriptor", "CONJUNTO APP");
+        preferencePayload.put("statement_descriptor", "CONJUNTO");
         preferencePayload.put("notification_url", urlBackend + "/api/pagos/mercadopago/webhook");
         Map<String, Object> backUrls = new LinkedHashMap<>();
         backUrls.put("success", successUrl);
         backUrls.put("pending", pendingUrl);
         backUrls.put("failure", failureUrl);
         preferencePayload.put("back_urls", backUrls);
-        preferencePayload.put("auto_return", "approved");
 
         Map<?, ?> body = invocarMercadoPago(
                 "https://api.mercadopago.com/checkout/preferences",
@@ -413,13 +418,29 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
     }
 
     private BigDecimal extraerMontoDePayload(Map<String, Object> payload) {
-        if (payload.containsKey("monto")) {
-            return extraerMonto(payload.get("monto"));
+        Object montoRaw = payload.get("monto");
+        if (montoRaw == null) {
+            montoRaw = payload.get("valor");
         }
-        if (payload.containsKey("valor")) {
-            return extraerMonto(payload.get("valor"));
+        if (montoRaw == null) {
+            throw new IllegalArgumentException("El campo monto o valor es obligatorio");
         }
-        throw new IllegalArgumentException("El campo monto o valor es obligatorio");
+        return extraerMonto(montoRaw);
+    }
+
+    /**
+     * Mercado Pago rechaza back_urls y notification_url con HTTP (error 400 invalid_back_urls).
+     */
+    private String asegurarUrlHttpsParaMercadoPago(String url) {
+        String valor = normalizarBaseUrl(url);
+        if (valor.startsWith("https://")) {
+            return valor;
+        }
+        if (valor.startsWith("http://")) {
+            log.warn("URL HTTP detectada para Mercado Pago ({}). Se usará URL pública HTTPS.", valor);
+            return normalizarBaseUrl(resolverUrlEfectiva("", "RENDER_EXTERNAL_URL"));
+        }
+        return "https://conjuntoback.onrender.com";
     }
 
     private String extraerConceptoDePayload(Map<String, Object> payload) {

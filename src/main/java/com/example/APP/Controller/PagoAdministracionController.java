@@ -119,7 +119,7 @@ public class PagoAdministracionController {
             String referencia = extraerReferencia(payload);
             return ResponseEntity.ok(pagoAdministracionService.confirmarPagoPorReferencia(referencia, authentication.getName()));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("mensaje", e.getMessage()));
         }
     }
 
@@ -146,7 +146,7 @@ public class PagoAdministracionController {
         try {
             return ResponseEntity.ok(pagoAdministracionService.crearCheckoutAdministracion(payload, authentication.getName()));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("mensaje", e.getMessage()));
         }
     }
 
