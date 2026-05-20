@@ -36,6 +36,13 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponseDto(ex.getMessage()));
     }
 
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponseDto> handleGeneric(Exception ex) {
+        log.error("Error 500 no controlado", ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponseDto("Error interno del servidor. Intenta de nuevo."));
+    }
+
     @ExceptionHandler({
             MissingServletRequestPartException.class,
             MissingServletRequestParameterException.class,

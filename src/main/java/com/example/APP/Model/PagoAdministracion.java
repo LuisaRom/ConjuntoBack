@@ -26,8 +26,14 @@ public class PagoAdministracion {
     private String concepto;
     private String periodo;
     private String referenciaExterna;
+
+    @Column(length = 80)
     private String mercadoPagoPreferenceId;
+
+    @Column(length = 80)
     private String mercadoPagoPaymentId;
+
+    @Column(length = 512)
     private String checkoutUrl;
 
     @ManyToOne

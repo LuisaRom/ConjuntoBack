@@ -2,6 +2,8 @@ package com.example.APP.Controller;
 
 import com.example.APP.Model.PagoAdministracion;
 import com.example.APP.Service.PagoAdministracionService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +19,8 @@ import java.util.Optional;
 @RequestMapping("/api/pagos")
 @CrossOrigin(originPatterns = "*", allowCredentials = "true")
 public class PagoAdministracionController {
+
+    private static final Logger log = LoggerFactory.getLogger(PagoAdministracionController.class);
 
     @Autowired
     private PagoAdministracionService pagoAdministracionService;
@@ -147,6 +151,10 @@ public class PagoAdministracionController {
             return ResponseEntity.ok(pagoAdministracionService.crearCheckoutAdministracion(payload, authentication.getName()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("mensaje", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error interno al crear checkout de administracion para usuario {}", authentication.getName(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("mensaje", "No fue posible iniciar el pago en linea. Intenta de nuevo en unos minutos."));
         }
     }
 

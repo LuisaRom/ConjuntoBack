@@ -59,7 +59,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
             mercadoPagoPublicKey = mercadoPagoPublicKey.trim();
         }
         validarCredencialesMercadoPago();
-        if (!mercadoPagoAccessToken.isBlank()) {
+        if (mercadoPagoAccessToken != null && !mercadoPagoAccessToken.isBlank()) {
             String prefijo = mercadoPagoAccessToken.length() > 16
                     ? mercadoPagoAccessToken.substring(0, 16) + "..."
                     : mercadoPagoAccessToken;
@@ -208,22 +208,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         pago.setCheckoutUrl(initPoint);
         pagoAdministracionRepository.save(pago);
 
-        Map<String, Object> salida = new LinkedHashMap<>();
-        salida.put("pagoId", pago.getId());
-        salida.put("estado", pago.getEstadoPago());
-        salida.put("metodoPago", "Pago en linea");
-        salida.put("referenciaExterna", referenciaExterna);
-        salida.put("mercadoPagoPreferenceId", body.get("id").toString());
-        salida.put("initPoint", initPoint);
-        salida.put("checkoutUrl", initPoint);
-        salida.put("periodo", periodo);
-        salida.put("diaLimitePago", DIA_LIMITE_PAGO_ADMINISTRACION);
-        salida.put("fechaLimitePago", periodoPago.atDay(DIA_LIMITE_PAGO_ADMINISTRACION));
-        salida.put("estadoAdministracion", LocalDate.now().isAfter(periodoPago.atDay(DIA_LIMITE_PAGO_ADMINISTRACION))
-                ? "EN_MORA"
-                : "PENDIENTE_EN_PLAZO");
-        salida.put("mensaje", "Pago creado. Redirige al usuario a Mercado Pago.");
-        return salida;
+        return construirSalidaCheckout(pago, body.get("id").toString(), initPoint, periodo, periodoPago);
     }
 
     @Override
@@ -387,12 +372,39 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         return construirRespuestaPago(pago);
     }
 
+    private Map<String, Object> construirSalidaCheckout(
+            PagoAdministracion pago,
+            String preferenceId,
+            String initPoint,
+            String periodo,
+            YearMonth periodoPago
+    ) {
+        Map<String, Object> salida = new LinkedHashMap<>();
+        salida.put("pagoId", pago.getId());
+        salida.put("estado", pago.getEstadoPago() != null ? pago.getEstadoPago().name() : "PENDIENTE");
+        salida.put("estadoPago", pago.getEstadoPago() != null ? pago.getEstadoPago().name() : "PENDIENTE");
+        salida.put("metodoPago", "Pago en linea");
+        salida.put("referenciaExterna", pago.getReferenciaExterna());
+        salida.put("mercadoPagoPreferenceId", preferenceId);
+        salida.put("initPoint", initPoint);
+        salida.put("checkoutUrl", initPoint);
+        salida.put("sandboxInitPoint", initPoint);
+        salida.put("periodo", periodo);
+        salida.put("diaLimitePago", DIA_LIMITE_PAGO_ADMINISTRACION);
+        salida.put("fechaLimitePago", periodoPago.atDay(DIA_LIMITE_PAGO_ADMINISTRACION).toString());
+        salida.put("estadoAdministracion", LocalDate.now().isAfter(periodoPago.atDay(DIA_LIMITE_PAGO_ADMINISTRACION))
+                ? "EN_MORA"
+                : "PENDIENTE_EN_PLAZO");
+        salida.put("mensaje", "Pago creado. Redirige al usuario a Mercado Pago.");
+        return salida;
+    }
+
     private Map<String, Object> construirRespuestaPago(PagoAdministracion pago) {
         Map<String, Object> salida = new LinkedHashMap<>();
         salida.put("pagoId", pago.getId());
         salida.put("referenciaExterna", pago.getReferenciaExterna());
-        salida.put("estadoPago", pago.getEstadoPago());
-        salida.put("fechaPago", pago.getFechaPago());
+        salida.put("estadoPago", pago.getEstadoPago() != null ? pago.getEstadoPago().name() : null);
+        salida.put("fechaPago", pago.getFechaPago() != null ? pago.getFechaPago().toString() : null);
         salida.put("mercadoPagoPaymentId", pago.getMercadoPagoPaymentId());
         salida.put("mensaje", mensajeEstado(pago.getEstadoPago()));
         return salida;
@@ -555,9 +567,9 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("id", pago.getId());
         item.put("monto", pago.getMonto());
-        item.put("fechaPago", pago.getFechaPago());
-        item.put("metodoPago", pago.getMetodoPago());
-        item.put("estadoPago", pago.getEstadoPago());
+        item.put("fechaPago", pago.getFechaPago() != null ? pago.getFechaPago().toString() : null);
+        item.put("metodoPago", pago.getMetodoPago() != null ? pago.getMetodoPago().name() : null);
+        item.put("estadoPago", pago.getEstadoPago() != null ? pago.getEstadoPago().name() : null);
         item.put("concepto", pago.getConcepto());
         item.put("periodo", pago.getPeriodo());
         item.put("referenciaExterna", pago.getReferenciaExterna());
@@ -580,7 +592,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         try {
             LocalDate fechaLimite = YearMonth.parse(pago.getPeriodo()).atDay(DIA_LIMITE_PAGO_ADMINISTRACION);
             item.put("diaLimitePago", DIA_LIMITE_PAGO_ADMINISTRACION);
-            item.put("fechaLimitePago", fechaLimite);
+            item.put("fechaLimitePago", fechaLimite.toString());
             item.put("pagoExtemporaneo", pago.getFechaPago() != null && pago.getFechaPago().toLocalDate().isAfter(fechaLimite));
         } catch (Exception ignored) {
             // Mantiene compatibilidad con pagos antiguos que puedan tener periodo no ISO yyyy-MM.
@@ -614,7 +626,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         item.put("apartamento", residente.getApartamento());
         item.put("periodoActual", periodoActual.toString());
         item.put("diaLimitePago", DIA_LIMITE_PAGO_ADMINISTRACION);
-        item.put("fechaLimitePago", fechaLimite);
+        item.put("fechaLimitePago", fechaLimite.toString());
         item.put("estadoAdministracion", estadoAdministracion);
         item.put("estaAlDia", "AL_DIA".equals(estadoAdministracion));
         item.put("estaEnMora", "EN_MORA".equals(estadoAdministracion));
