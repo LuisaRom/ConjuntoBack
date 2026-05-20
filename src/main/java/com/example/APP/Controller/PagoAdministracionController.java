@@ -22,6 +22,7 @@ public class PagoAdministracionController {
     private PagoAdministracionService pagoAdministracionService;
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMINISTRADOR')")
     public List<PagoAdministracion> obtenerTodos() {
         return pagoAdministracionService.obtenerTodos();
     }
@@ -76,11 +77,24 @@ public class PagoAdministracionController {
     }
 
     @GetMapping("/{id}")
-    public Optional<PagoAdministracion> obtenerPorId(@PathVariable Long id) {
-        return pagoAdministracionService.obtenerPorId(id);
+    @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'RESIDENTE')")
+    public ResponseEntity<?> obtenerPorId(@PathVariable Long id, Authentication authentication) {
+        Optional<PagoAdministracion> pago = pagoAdministracionService.obtenerPorId(id);
+        if (pago.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        if (authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMINISTRADOR"))) {
+            return ResponseEntity.ok(pago.get());
+        }
+        String username = authentication.getName();
+        if (pago.get().getUsuario() != null && username.equals(pago.get().getUsuario().getUsuario())) {
+            return ResponseEntity.ok(pago.get());
+        }
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body("No autorizado para consultar este pago");
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMINISTRADOR')")
     public PagoAdministracion guardar(@RequestBody PagoAdministracion pagoAdministracion) {
         return pagoAdministracionService.guardar(pagoAdministracion);
     }
@@ -88,6 +102,47 @@ public class PagoAdministracionController {
     @PostMapping("/checkout/administracion")
     @PreAuthorize("hasRole('RESIDENTE')")
     public ResponseEntity<?> crearCheckoutAdministracion(@RequestBody Map<String, Object> payload, Authentication authentication) {
+        return ejecutarCheckout(payload, authentication);
+    }
+
+    /** Alias usados por la app Android (Retrofit prueba varias rutas). */
+    @PostMapping({"/crear", "/checkout", "/mercadopago", "/mercadopago/crear", "/mercado-pago", "/mercado-pago/crear"})
+    @PreAuthorize("hasRole('RESIDENTE')")
+    public ResponseEntity<?> crearCheckoutAlias(@RequestBody Map<String, Object> payload, Authentication authentication) {
+        return ejecutarCheckout(payload, authentication);
+    }
+
+    @PostMapping("/confirmar")
+    @PreAuthorize("hasRole('RESIDENTE')")
+    public ResponseEntity<?> confirmarPago(@RequestBody Map<String, Object> payload, Authentication authentication) {
+        try {
+            String referencia = extraerReferencia(payload);
+            return ResponseEntity.ok(pagoAdministracionService.confirmarPagoPorReferencia(referencia, authentication.getName()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/mercadopago/webhook")
+    public ResponseEntity<?> webhookMercadoPagoPost(@RequestBody(required = false) Map<String, Object> payload) {
+        return responderWebhook(payload, null, null);
+    }
+
+    @GetMapping("/mercadopago/webhook")
+    public ResponseEntity<?> webhookMercadoPagoGet(
+            @RequestParam(value = "topic", required = false) String topic,
+            @RequestParam(value = "id", required = false) String id
+    ) {
+        return responderWebhook(null, topic, id);
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMINISTRADOR')")
+    public void eliminar(@PathVariable Long id) {
+        pagoAdministracionService.eliminar(id);
+    }
+
+    private ResponseEntity<?> ejecutarCheckout(Map<String, Object> payload, Authentication authentication) {
         try {
             return ResponseEntity.ok(pagoAdministracionService.crearCheckoutAdministracion(payload, authentication.getName()));
         } catch (IllegalArgumentException e) {
@@ -95,17 +150,25 @@ public class PagoAdministracionController {
         }
     }
 
-    @PostMapping("/mercadopago/webhook")
-    public ResponseEntity<?> webhookMercadoPago(@RequestBody Map<String, Object> payload) {
+    private ResponseEntity<?> responderWebhook(Map<String, Object> payload, String topic, String id) {
         try {
-            return ResponseEntity.ok(pagoAdministracionService.procesarRetornoCheckout(payload));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.ok(pagoAdministracionService.procesarNotificacionMercadoPago(payload, topic, id));
+        } catch (Exception e) {
+            return ResponseEntity.ok(Map.of("procesado", false, "mensaje", "Error al procesar notificación"));
         }
     }
 
-    @DeleteMapping("/{id}")
-    public void eliminar(@PathVariable Long id) {
-        pagoAdministracionService.eliminar(id);
+    private String extraerReferencia(Map<String, Object> payload) {
+        if (payload == null) {
+            throw new IllegalArgumentException("referenciaExterna es obligatoria");
+        }
+        Object ref = payload.get("referenciaExterna");
+        if (ref == null) {
+            ref = payload.get("ref");
+        }
+        if (ref == null || ref.toString().isBlank()) {
+            throw new IllegalArgumentException("referenciaExterna es obligatoria");
+        }
+        return ref.toString().trim();
     }
 }
