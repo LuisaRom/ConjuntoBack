@@ -47,6 +47,7 @@ public class AppApplication {
 		setPropertyFromDotenv(dotenv, "DB_PASSWORD", "spring.datasource.password");
 		setPropertyFromDotenv(dotenv, "JWT_SECRET", "app.security.jwt-secret");
 		setPropertyFromDotenv(dotenv, "MERCADOPAGO_ACCESS_TOKEN", "mercadopago.access-token");
+		setPropertyFromDotenv(dotenv, "MERCADOPAGO_PUBLIC_KEY", "mercadopago.public-key");
 		setPropertyFromDotenv(dotenv, "FRONTEND_BASE_URL", "app.frontend.base-url");
 		setPropertyFromDotenv(dotenv, "BACKEND_BASE_URL", "app.backend.base-url");
 

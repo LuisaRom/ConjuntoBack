@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import jakarta.annotation.PostConstruct;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
@@ -46,6 +47,19 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
     @Value("${mercadopago.access-token:}")
     private String mercadoPagoAccessToken;
 
+    @PostConstruct
+    void normalizarTokenMercadoPago() {
+        if (mercadoPagoAccessToken != null) {
+            mercadoPagoAccessToken = mercadoPagoAccessToken.trim();
+        }
+        if (mercadoPagoAccessToken != null && !mercadoPagoAccessToken.isBlank()) {
+            String prefijo = mercadoPagoAccessToken.length() > 12
+                    ? mercadoPagoAccessToken.substring(0, 12) + "..."
+                    : mercadoPagoAccessToken;
+            log.info("Mercado Pago Access Token cargado (prefijo: {})", prefijo);
+        }
+    }
+
     @Value("${app.frontend.base-url:http://localhost:5173}")
     private String frontendBaseUrl;
 
@@ -78,9 +92,8 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
             throw new IllegalArgumentException("Solo los residentes pueden iniciar pagos de administración");
         }
         if (mercadoPagoAccessToken == null || mercadoPagoAccessToken.isBlank()) {
-            throw new IllegalArgumentException("Falta configurar MERCADOPAGO_ACCESS_TOKEN para sandbox");
+            throw new IllegalArgumentException("Falta configurar MERCADOPAGO_ACCESS_TOKEN (Access Token APP_USR- de prueba)");
         }
-
         BigDecimal monto = extraerMontoDePayload(payload);
         if (monto.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El monto debe ser mayor a 0");
@@ -369,6 +382,13 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
             String detalle = ex.getResponseBodyAsString();
             if (detalle != null && detalle.length() > 300) {
                 detalle = detalle.substring(0, 300) + "...";
+            }
+            if (ex.getStatusCode().value() == 401) {
+                throw new IllegalArgumentException(
+                        "Mercado Pago rechazó el Access Token (401). En Render configura MERCADOPAGO_ACCESS_TOKEN "
+                                + "con el Access Token APP_USR- de credenciales de prueba (no la Public Key). "
+                                + "Detalle: " + detalle
+                );
             }
             throw new IllegalArgumentException("Error de Mercado Pago (" + ex.getStatusCode().value() + "): " + detalle);
         } catch (RestClientException ex) {
