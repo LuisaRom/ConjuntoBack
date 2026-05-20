@@ -47,17 +47,49 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
     @Value("${mercadopago.access-token:}")
     private String mercadoPagoAccessToken;
 
+    @Value("${mercadopago.public-key:}")
+    private String mercadoPagoPublicKey;
+
     @PostConstruct
     void normalizarTokenMercadoPago() {
         if (mercadoPagoAccessToken != null) {
             mercadoPagoAccessToken = mercadoPagoAccessToken.trim();
         }
-        if (mercadoPagoAccessToken != null && !mercadoPagoAccessToken.isBlank()) {
-            String prefijo = mercadoPagoAccessToken.length() > 12
-                    ? mercadoPagoAccessToken.substring(0, 12) + "..."
-                    : mercadoPagoAccessToken;
-            log.info("Mercado Pago Access Token cargado (prefijo: {})", prefijo);
+        if (mercadoPagoPublicKey != null) {
+            mercadoPagoPublicKey = mercadoPagoPublicKey.trim();
         }
+        validarCredencialesMercadoPago();
+        if (!mercadoPagoAccessToken.isBlank()) {
+            String prefijo = mercadoPagoAccessToken.length() > 16
+                    ? mercadoPagoAccessToken.substring(0, 16) + "..."
+                    : mercadoPagoAccessToken;
+            log.info("Mercado Pago Access Token cargado (prefijo: {}, modo sandbox={})",
+                    prefijo, esModoSandbox());
+        }
+    }
+
+    private void validarCredencialesMercadoPago() {
+        if (mercadoPagoAccessToken == null || mercadoPagoAccessToken.isBlank()) {
+            log.warn("MERCADOPAGO_ACCESS_TOKEN no configurado. Los pagos en linea no funcionaran.");
+            return;
+        }
+        if (mercadoPagoPublicKey != null && !mercadoPagoPublicKey.isBlank()
+                && mercadoPagoAccessToken.equals(mercadoPagoPublicKey)) {
+            throw new IllegalStateException(
+                    "MERCADOPAGO_ACCESS_TOKEN y MERCADOPAGO_PUBLIC_KEY son iguales. "
+                            + "En el backend solo va el Access Token (TEST-7403...), no la Public Key (TEST-7f88...)."
+            );
+        }
+        if (mercadoPagoAccessToken.contains("7f88b41a-b185-4466-914c")) {
+            throw new IllegalStateException(
+                    "MERCADOPAGO_ACCESS_TOKEN parece ser la Public Key. Usa el Access Token TEST-7403276532353229-..."
+            );
+        }
+    }
+
+    private boolean esModoSandbox() {
+        return mercadoPagoAccessToken != null
+                && (mercadoPagoAccessToken.startsWith("TEST-") || mercadoPagoAccessToken.startsWith("APP_USR-"));
     }
 
     @Value("${app.frontend.base-url:http://localhost:5173}")
@@ -92,7 +124,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
             throw new IllegalArgumentException("Solo los residentes pueden iniciar pagos de administración");
         }
         if (mercadoPagoAccessToken == null || mercadoPagoAccessToken.isBlank()) {
-            throw new IllegalArgumentException("Falta configurar MERCADOPAGO_ACCESS_TOKEN (Access Token APP_USR- de prueba)");
+            throw new IllegalArgumentException("Falta configurar MERCADOPAGO_ACCESS_TOKEN (Access Token TEST- de prueba)");
         }
         BigDecimal monto = extraerMontoDePayload(payload);
         if (monto.compareTo(BigDecimal.ZERO) <= 0) {
@@ -162,9 +194,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
             throw new IllegalArgumentException("Mercado Pago no devolvió init_point para continuar el pago");
         }
 
-        String initPoint = sandboxInitPoint != null
-                ? sandboxInitPoint.toString()
-                : initPointNormal.toString();
+        String initPoint = resolverInitPointCheckout(sandboxInitPoint, initPointNormal);
 
         PagoAdministracion pago = new PagoAdministracion();
         pago.setUsuario(usuario);
@@ -385,8 +415,8 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
             }
             if (ex.getStatusCode().value() == 401) {
                 throw new IllegalArgumentException(
-                        "Mercado Pago rechazó el Access Token (401). En Render configura MERCADOPAGO_ACCESS_TOKEN "
-                                + "con el Access Token APP_USR- de credenciales de prueba (no la Public Key). "
+                        "Mercado Pago rechazó el Access Token (401). En Render usa MERCADOPAGO_ACCESS_TOKEN "
+                                + "con el Access Token TEST-7403276532353229-... (no la Public Key TEST-7f88...). "
                                 + "Detalle: " + detalle
                 );
             }
@@ -394,6 +424,19 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         } catch (RestClientException ex) {
             throw new IllegalArgumentException("No fue posible comunicarse con Mercado Pago: " + ex.getMessage());
         }
+    }
+
+    private String resolverInitPointCheckout(Object sandboxInitPoint, Object initPointNormal) {
+        if (esModoSandbox() && sandboxInitPoint != null) {
+            return sandboxInitPoint.toString();
+        }
+        if (sandboxInitPoint != null) {
+            return sandboxInitPoint.toString();
+        }
+        if (initPointNormal != null) {
+            return initPointNormal.toString();
+        }
+        throw new IllegalArgumentException("Mercado Pago no devolvió URL de checkout");
     }
 
     private String resolverUrlBackend() {
