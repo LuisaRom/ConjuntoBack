@@ -11,4 +11,6 @@ public interface PagoAdministracionRepository extends JpaRepository<PagoAdminist
     List<PagoAdministracion> findAllByOrderByIdDesc();
     java.util.Optional<PagoAdministracion> findByReferenciaExterna(String referenciaExterna);
     boolean existsByUsuarioIdAndPeriodoAndEstadoPago(Long usuarioId, String periodo, PagoAdministracion.EstadoPago estadoPago);
+    List<PagoAdministracion> findByUsuarioIdAndPeriodoAndEstadoPagoOrderByIdDesc(
+            Long usuarioId, String periodo, PagoAdministracion.EstadoPago estadoPago);
 }

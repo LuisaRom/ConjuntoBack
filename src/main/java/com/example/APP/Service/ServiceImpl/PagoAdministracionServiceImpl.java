@@ -165,21 +165,26 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
             throw new IllegalArgumentException("Ya existe un pago aprobado para el periodo " + periodo);
         }
 
-        String urlBackend = asegurarUrlHttpsParaMercadoPago(resolverUrlBackend());
-        String urlRetorno = asegurarUrlHttpsParaMercadoPago(resolverUrlRetorno(payload));
-        log.info("Checkout MP: webhook={}, retorno={}", urlBackend + "/api/pagos/mercadopago/webhook", urlRetorno);
-
-        String referenciaExterna = "ADM-" + usuario.getId() + "-" + UUID.randomUUID();
-        String refCodificada = URLEncoder.encode(referenciaExterna, StandardCharsets.UTF_8);
-        String successUrl = urlRetorno + "/pagos/resultado?ref=" + refCodificada + "&estado=aprobado";
-        String pendingUrl = urlRetorno + "/pagos/resultado?ref=" + refCodificada + "&estado=pendiente";
-        String failureUrl = urlRetorno + "/pagos/resultado?ref=" + refCodificada + "&estado=rechazado";
-
         int precioEntero = monto.intValue();
         if (precioEntero <= 0) {
             throw new IllegalArgumentException("El monto debe ser un valor entero mayor a 0 en COP");
         }
 
+        // 1) Persistir en BD antes de Mercado Pago (reutiliza un PENDIENTE del mes si existe).
+        PagoAdministracion pago = prepararPagoPendienteEnBaseDatos(usuario, periodo, monto, concepto);
+        String referenciaExterna = pago.getReferenciaExterna();
+
+        String urlBackend = asegurarUrlHttpsParaMercadoPago(resolverUrlBackend());
+        String urlRetorno = asegurarUrlHttpsParaMercadoPago(resolverUrlRetorno(payload));
+        log.info("Checkout MP: pagoId={}, ref={}, webhook={}, retorno={}",
+                pago.getId(), referenciaExterna, urlBackend + "/api/pagos/mercadopago/webhook", urlRetorno);
+
+        String refCodificada = URLEncoder.encode(referenciaExterna, StandardCharsets.UTF_8);
+        String successUrl = urlRetorno + "/pagos/resultado?ref=" + refCodificada + "&estado=aprobado";
+        String pendingUrl = urlRetorno + "/pagos/resultado?ref=" + refCodificada + "&estado=pendiente";
+        String failureUrl = urlRetorno + "/pagos/resultado?ref=" + refCodificada + "&estado=rechazado";
+
+        // 2) Crear preferencia en Mercado Pago con la referencia ya guardada.
         Map<String, Object> preferencePayload = new LinkedHashMap<>();
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("title", (concepto + " " + periodo).substring(0, Math.min(127, (concepto + " " + periodo).length())));
@@ -213,27 +218,78 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
 
         String initPoint = resolverInitPointCheckout(sandboxInitPoint, initPointNormal);
 
-        PagoAdministracion pago = new PagoAdministracion();
-        pago.setUsuario(usuario);
+        // 3) Actualizar el registro existente con datos de Mercado Pago.
+        pago.setMercadoPagoPreferenceId(body.get("id").toString());
+        pago.setCheckoutUrl(initPoint);
+        pago = guardarPagoEnBaseDatos(pago, usuario.getId(), periodo);
+
+        log.info("Checkout creado: pagoId={}, referencia={}", pago.getId(), referenciaExterna);
+        return construirSalidaCheckout(pago, body.get("id").toString(), initPoint, periodo, periodoPago);
+    }
+
+    private PagoAdministracion prepararPagoPendienteEnBaseDatos(
+            Usuario usuario, String periodo, BigDecimal monto, String concepto
+    ) {
+        List<PagoAdministracion> pendientes = pagoAdministracionRepository
+                .findByUsuarioIdAndPeriodoAndEstadoPagoOrderByIdDesc(
+                        usuario.getId(), periodo, PagoAdministracion.EstadoPago.PENDIENTE);
+
+        for (int i = 1; i < pendientes.size(); i++) {
+            PagoAdministracion duplicado = pendientes.get(i);
+            duplicado.setEstadoPago(PagoAdministracion.EstadoPago.RECHAZADO);
+            try {
+                pagoAdministracionRepository.save(duplicado);
+                log.info("Pago PENDIENTE duplicado marcado RECHAZADO: id={}, periodo={}", duplicado.getId(), periodo);
+            } catch (DataAccessException ex) {
+                log.warn("No se pudo marcar duplicado RECHAZADO id={}", duplicado.getId(), ex);
+            }
+        }
+
+        PagoAdministracion pago;
+        if (!pendientes.isEmpty()) {
+            pago = pendientes.getFirst();
+            log.info("Reutilizando pago PENDIENTE id={} para periodo={}", pago.getId(), periodo);
+        } else {
+            pago = new PagoAdministracion();
+            pago.setUsuario(usuario);
+            pago.setReferenciaExterna(generarReferenciaExterna(usuario.getId()));
+            log.info("Nuevo pago PENDIENTE para usuario={} periodo={}", usuario.getId(), periodo);
+        }
+
+        if (pago.getReferenciaExterna() == null || pago.getReferenciaExterna().isBlank()) {
+            pago.setReferenciaExterna(generarReferenciaExterna(usuario.getId()));
+        }
+
         pago.setMonto(monto);
         pago.setMetodoPago(PagoAdministracion.MetodoPago.MERCADO_PAGO);
         pago.setEstadoPago(PagoAdministracion.EstadoPago.PENDIENTE);
         pago.setConcepto(concepto);
         pago.setPeriodo(periodo);
-        pago.setReferenciaExterna(referenciaExterna);
-        pago.setMercadoPagoPreferenceId(body.get("id").toString());
-        pago.setCheckoutUrl(initPoint);
+        pago.setMercadoPagoPreferenceId(null);
+        pago.setCheckoutUrl(null);
+        pago.setMercadoPagoPaymentId(null);
+        pago.setFechaPago(null);
+
+        return guardarPagoEnBaseDatos(pago, usuario.getId(), periodo);
+    }
+
+    private String generarReferenciaExterna(Long usuarioId) {
+        return "ADM-" + usuarioId + "-" + UUID.randomUUID();
+    }
+
+    private PagoAdministracion guardarPagoEnBaseDatos(PagoAdministracion pago, Long usuarioId, String periodo) {
         try {
-            pago = pagoAdministracionRepository.save(pago);
+            return pagoAdministracionRepository.save(pago);
         } catch (DataAccessException ex) {
-            log.error("No se pudo guardar pago pendiente en BD (usuario={}, periodo={})", usuario.getId(), periodo, ex);
+            String causa = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
+            log.error(
+                    "Error guardando pago en BD (usuario={}, periodo={}, metodoPago={}, estadoPago={}, causa={})",
+                    usuarioId, periodo, pago.getMetodoPago(), pago.getEstadoPago(), causa, ex
+            );
             throw new IllegalArgumentException(
                     "No se pudo registrar el pago en la base de datos. Contacta al administrador o intenta más tarde."
             );
         }
-
-        log.info("Checkout creado: pagoId={}, referencia={}", pago.getId(), referenciaExterna);
-        return construirSalidaCheckout(pago, body.get("id").toString(), initPoint, periodo, periodoPago);
     }
 
     private boolean existePagoAprobadoEnPeriodo(Long usuarioId, String periodo) {
