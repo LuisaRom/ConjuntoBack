@@ -261,7 +261,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         }
 
         pago.setMonto(monto);
-        pago.setMetodoPago(PagoAdministracion.MetodoPago.MERCADO_PAGO);
+        pago.setMetodoPago(PagoAdministracion.MetodoPago.PSE);
         pago.setEstadoPago(PagoAdministracion.EstadoPago.PENDIENTE);
         pago.setConcepto(concepto);
         pago.setPeriodo(periodo);
@@ -648,6 +648,14 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         };
     }
 
+    /** PSE en BD = pago en línea (Mercado Pago); la API expone MERCADO_PAGO para el cliente. */
+    private String metodoPagoParaApi(PagoAdministracion.MetodoPago metodoPago) {
+        if (metodoPago == null) {
+            return null;
+        }
+        return metodoPago == PagoAdministracion.MetodoPago.PSE ? "MERCADO_PAGO" : metodoPago.name();
+    }
+
     private String mensajeEstado(PagoAdministracion.EstadoPago estadoPago) {
         return switch (estadoPago) {
             case APROBADO -> "Pago realizado con exito";
@@ -661,7 +669,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         item.put("id", pago.getId());
         item.put("monto", pago.getMonto());
         item.put("fechaPago", pago.getFechaPago() != null ? pago.getFechaPago().toString() : null);
-        item.put("metodoPago", pago.getMetodoPago() != null ? pago.getMetodoPago().name() : null);
+        item.put("metodoPago", metodoPagoParaApi(pago.getMetodoPago()));
         item.put("estadoPago", pago.getEstadoPago() != null ? pago.getEstadoPago().name() : null);
         item.put("concepto", pago.getConcepto());
         item.put("periodo", pago.getPeriodo());

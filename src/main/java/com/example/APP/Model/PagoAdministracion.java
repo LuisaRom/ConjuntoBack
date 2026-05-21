@@ -133,8 +133,12 @@ public class PagoAdministracion {
         this.usuario = usuario;
     }
 
+    /**
+     * Valores permitidos por el CHECK de PostgreSQL (creado con la tabla original).
+     * Pagos en línea (Mercado Pago) usan PSE; efectivo en ventanilla usa EFECTIVO.
+     */
     public enum MetodoPago {
-        MERCADO_PAGO, EFECTIVO
+        PSE, EFECTIVO
     }
 
     public enum EstadoPago {
