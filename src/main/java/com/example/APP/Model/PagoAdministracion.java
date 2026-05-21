@@ -134,7 +134,7 @@ public class PagoAdministracion {
     }
 
     public enum MetodoPago {
-        EN_LINEA, EFECTIVO
+        MERCADO_PAGO, EFECTIVO
     }
 
     public enum EstadoPago {

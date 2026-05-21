@@ -216,7 +216,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         PagoAdministracion pago = new PagoAdministracion();
         pago.setUsuario(usuario);
         pago.setMonto(monto);
-        pago.setMetodoPago(PagoAdministracion.MetodoPago.EN_LINEA);
+        pago.setMetodoPago(PagoAdministracion.MetodoPago.MERCADO_PAGO);
         pago.setEstadoPago(PagoAdministracion.EstadoPago.PENDIENTE);
         pago.setConcepto(concepto);
         pago.setPeriodo(periodo);
