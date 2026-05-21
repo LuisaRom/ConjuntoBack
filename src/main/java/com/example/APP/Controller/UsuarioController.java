@@ -136,7 +136,14 @@ public class UsuarioController {
 
     @PostMapping("/login")
     public ResponseEntity<LoginResponseDto> login(@RequestBody LoginRequest request) {
+        if (request == null || request.getUsuario() == null || request.getUsuario().isBlank()
+                || request.getPassword() == null || request.getPassword().isBlank()) {
+            throw new IllegalArgumentException("usuario y password son obligatorios");
+        }
         Usuario usuario = usuarioService.login(request.getUsuario(), request.getPassword());
+        if (usuario.getRol() == null) {
+            throw new IllegalArgumentException("El usuario no tiene un rol asignado. Contacta al administrador.");
+        }
 
         Map<String, Object> claims = new HashMap<>();
         claims.put("rol", usuario.getRol().name());
