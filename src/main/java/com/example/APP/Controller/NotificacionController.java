@@ -3,10 +3,16 @@ package com.example.APP.Controller;
 import com.example.APP.Model.Notificacion;
 import com.example.APP.Service.NotificacionService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -63,15 +69,83 @@ public class NotificacionController {
         return notificacionService.obtenerPorId(id);
     }
 
-    @PostMapping
+    @GetMapping("/{id}/imagen")
+    public ResponseEntity<Resource> obtenerImagen(@PathVariable Long id) {
+        try {
+            Resource resource = notificacionService.obtenerImagen(id);
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"imagen-" + id + "\"")
+                    .body(resource);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/{id}/video")
+    public ResponseEntity<Resource> obtenerVideo(@PathVariable Long id) {
+        try {
+            Resource resource = notificacionService.obtenerVideo(id);
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"video-" + id + "\"")
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(resource);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> guardar(@RequestBody Notificacion notificacion, Authentication authentication) {
         try {
             if (notificacion.getFechaEnvio() == null) {
                 notificacion.setFechaEnvio(java.time.LocalDateTime.now());
             }
-            return ResponseEntity.ok(notificacionService.guardar(notificacion, authentication.getName()));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            Notificacion creada = notificacionService.guardar(notificacion, authentication.getName());
+            return ResponseEntity.ok(notificacionService.mapearPublicacion(creada));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("mensaje", e.getMessage()));
+        } catch (DataAccessException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("mensaje", "Error al guardar en base de datos. Revisa el esquema de notificaciones."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("mensaje", "Error interno al crear la publicación"));
+        }
+    }
+
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> guardarMultipart(
+            @RequestParam(value = "mensaje", required = false) String mensaje,
+            @RequestParam(value = "fechaEnvio", required = false) String fechaEnvio,
+            @RequestParam(value = "usuariosEtiquetados", required = false) String usuariosEtiquetados,
+            @RequestParam(value = "imagen", required = false) MultipartFile imagen,
+            @RequestParam(value = "foto", required = false) MultipartFile foto,
+            @RequestParam(value = "video", required = false) MultipartFile video,
+            Authentication authentication
+    ) {
+        try {
+            MultipartFile archivoImagen = (imagen != null && !imagen.isEmpty()) ? imagen : foto;
+            Notificacion creada = notificacionService.crearConMultimedia(
+                    mensaje,
+                    fechaEnvio,
+                    usuariosEtiquetados,
+                    archivoImagen,
+                    video,
+                    authentication.getName()
+            );
+            return ResponseEntity.ok(notificacionService.mapearPublicacion(creada));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("mensaje", e.getMessage()));
+        } catch (DataAccessException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("mensaje", "Error al guardar en base de datos. Revisa columnas imagen_url, video_url y usuarios_etiquetados."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("mensaje", "No se pudo crear la publicación"));
         }
     }
 

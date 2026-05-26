@@ -14,11 +14,19 @@ public class Notificacion {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(columnDefinition = "TEXT")
     private String mensaje;
+
     private LocalDateTime fechaEnvio;
-    private String imagenUrl;  // Ruta de la imagen adjunta
-    private String videoUrl;  // Ruta del video adjunto
-    private String usuariosEtiquetados;  // JSON array de IDs de usuarios etiquetados
+
+    @Column(length = 512)
+    private String imagenUrl;
+
+    @Column(length = 512)
+    private String videoUrl;
+
+    @Column(columnDefinition = "TEXT")
+    private String usuariosEtiquetados;
 
     @ManyToOne
     @JoinColumn(name = "usuario_id")

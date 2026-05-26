@@ -7,10 +7,23 @@ import com.example.APP.Repository.HistorialNotificacionRepository;
 import com.example.APP.Repository.NotificacionRepository;
 import com.example.APP.Repository.UsuarioRepository;
 import com.example.APP.Service.NotificacionService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -22,6 +35,8 @@ import java.util.Optional;
 @Service
 public class NotificacionServiceImpl implements NotificacionService {
 
+    private static final Logger log = LoggerFactory.getLogger(NotificacionServiceImpl.class);
+
     @Autowired
     private NotificacionRepository notificacionRepository;
     
@@ -31,11 +46,18 @@ public class NotificacionServiceImpl implements NotificacionService {
     @Autowired
     private HistorialNotificacionRepository historialNotificacionRepository;
 
+    @Value("${app.backend.base-url:https://conjuntoback.onrender.com}")
+    private String backendBaseUrl;
+
+    @Value("${app.uploads.dir:}")
+    private String uploadsDirConfigurado;
+
     @Override
     public List<Notificacion> obtenerTodos() {
-        archivarRecibosVencidos();
+        archivarRecibosVencidosSeguro();
         return notificacionRepository.findAll().stream()
                 .filter(n -> !esMensajeChat(n))
+                .sorted(Comparator.comparing(Notificacion::getFechaEnvio, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
                 .toList();
     }
 
@@ -55,14 +77,12 @@ public class NotificacionServiceImpl implements NotificacionService {
                 // Usar el usuario completo desde la base de datos
                 Usuario usuarioCompleto = usuarioOpt.get();
                 notificacion.setUsuario(usuarioCompleto);
-                System.out.println("NotificacionServiceImpl: Usuario cargado desde BD - ID: " + usuarioCompleto.getId() + 
-                                   ", Nombre: " + usuarioCompleto.getNombre() + 
-                                   ", Rol: " + usuarioCompleto.getRol());
+                log.debug("Usuario cargado para notificación id={}", usuarioCompleto.getId());
             } else {
-                throw new RuntimeException("Usuario no encontrado con id: " + usuarioId);
+                throw new IllegalArgumentException("Usuario no encontrado con id: " + usuarioId);
             }
         } else if (notificacion.getUsuario() == null) {
-            throw new RuntimeException("La notificaci?n debe tener un usuario asignado");
+            throw new IllegalArgumentException("La notificación debe tener un usuario asignado");
         }
         
         // Si no hay fecha, asignar la fecha actual
@@ -72,10 +92,16 @@ public class NotificacionServiceImpl implements NotificacionService {
         validarMultimediaOpcional(notificacion.getImagenUrl(), "imagenUrl");
         validarMultimediaOpcional(notificacion.getVideoUrl(), "videoUrl");
         
-        System.out.println("NotificacionServiceImpl: Guardando notificaci?n - Mensaje: " + notificacion.getMensaje() + 
-                           ", Usuario ID: " + (notificacion.getUsuario() != null ? notificacion.getUsuario().getId() : "null"));
-        
-        return notificacionRepository.save(notificacion);
+        try {
+            return notificacionRepository.save(notificacion);
+        } catch (DataAccessException ex) {
+            String causa = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
+            log.error("Error SQL al guardar notificación (usuarioId={}): {}", 
+                    notificacion.getUsuario() != null ? notificacion.getUsuario().getId() : null, causa, ex);
+            throw new IllegalStateException(
+                    "No se pudo guardar la publicación en la base de datos. Verifica columnas imagen_url, video_url y usuarios_etiquetados."
+            );
+        }
     }
 
     @Override
@@ -116,18 +142,28 @@ public class NotificacionServiceImpl implements NotificacionService {
 
     @Override
     public List<Map<String, Object>> obtenerNovedades(String search, String usernameAutenticado) {
+        if (usernameAutenticado != null && !usernameAutenticado.isBlank()) {
+            usuarioRepository.findByUsuario(usernameAutenticado)
+                    .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
+        }
         String filtro = search != null ? search.trim().toLowerCase() : "";
-        Usuario usuarioAutenticado = usuarioRepository.findByUsuario(usernameAutenticado)
-                .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
-        return notificacionRepository.findAll().stream()
-                .filter(n -> !esMensajeChat(n))
-                .filter(n -> usuarioAutenticado.getRol() != Usuario.Rol.RESIDENTE
-                        || (n.getUsuario() != null && n.getUsuario().getId() != null
-                        && n.getUsuario().getId().equals(usuarioAutenticado.getId())))
-                .filter(n -> filtro.isBlank() || contieneFiltroNotificacion(n, filtro))
-                .sorted(Comparator.comparing(Notificacion::getFechaEnvio, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
+        return listarPublicacionesNovedades(filtro).stream()
                 .map(this::mapearNotificacionDetalle)
                 .toList();
+    }
+
+    /** Publicaciones del muro (novedades): visibles para admin, celador y residentes. */
+    private List<Notificacion> listarPublicacionesNovedades(String filtroMinusculas) {
+        String filtro = filtroMinusculas != null ? filtroMinusculas : "";
+        return notificacionRepository.findAll().stream()
+                .filter(this::esPublicacionNovedad)
+                .filter(n -> filtro.isBlank() || contieneFiltroNotificacion(n, filtro))
+                .sorted(Comparator.comparing(Notificacion::getFechaEnvio, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
+                .toList();
+    }
+
+    private boolean esPublicacionNovedad(Notificacion notificacion) {
+        return notificacion != null && !esMensajeChat(notificacion) && !esNotificacionRecibo(notificacion);
     }
 
     @Override
@@ -242,7 +278,66 @@ public class NotificacionServiceImpl implements NotificacionService {
     public void eliminar(Long id) {
         notificacionRepository.deleteById(id);
     }
+
+    @Override
+    public Notificacion crearConMultimedia(
+            String mensaje,
+            String fechaEnvio,
+            String usuariosEtiquetados,
+            MultipartFile imagen,
+            MultipartFile video,
+            String usernameAutenticado
+    ) {
+        if (mensaje == null || mensaje.isBlank()) {
+            throw new IllegalArgumentException("El campo mensaje es obligatorio");
+        }
+
+        Notificacion notificacion = new Notificacion();
+        notificacion.setMensaje(mensaje.trim());
+        notificacion.setFechaEnvio(parsearFechaEnvio(fechaEnvio));
+        notificacion.setUsuariosEtiquetados(usuariosEtiquetados);
+
+        Notificacion guardada = guardar(notificacion, usernameAutenticado);
+        Long id = guardada.getId();
+        if (id == null) {
+            throw new IllegalStateException("No se pudo crear la publicación");
+        }
+
+        MultipartFile archivoImagen = imagen != null && !imagen.isEmpty() ? imagen : null;
+        MultipartFile archivoVideo = video != null && !video.isEmpty() ? video : null;
+
+        if (archivoImagen != null) {
+            guardarArchivoNotificacion(id, archivoImagen, "imagen");
+            guardada.setImagenUrl(construirUrlPublica(id, "imagen"));
+        }
+        if (archivoVideo != null) {
+            guardarArchivoNotificacion(id, archivoVideo, "video");
+            guardada.setVideoUrl(construirUrlPublica(id, "video"));
+        }
+
+        validarMultimediaOpcional(guardada.getImagenUrl(), "imagenUrl");
+        validarMultimediaOpcional(guardada.getVideoUrl(), "videoUrl");
+        return notificacionRepository.save(guardada);
+    }
+
+    @Override
+    public Resource obtenerImagen(Long id) {
+        return obtenerRecursoNotificacion(id, "imagen");
+    }
+
+    @Override
+    public Resource obtenerVideo(Long id) {
+        return obtenerRecursoNotificacion(id, "video");
+    }
     
+    private void archivarRecibosVencidosSeguro() {
+        try {
+            archivarRecibosVencidos();
+        } catch (Exception ex) {
+            log.warn("No se pudo archivar recibos vencidos (se omite): {}", ex.getMessage());
+        }
+    }
+
     private void archivarRecibosVencidos() {
         List<Notificacion> todas = notificacionRepository.findAll();
         LocalDateTime limite = LocalDateTime.now().minusDays(20);
@@ -358,11 +453,16 @@ public class NotificacionServiceImpl implements NotificacionService {
         return valor != null && valor.toLowerCase().contains(filtro);
     }
 
+    @Override
+    public Map<String, Object> mapearPublicacion(Notificacion notificacion) {
+        return mapearNotificacionDetalle(notificacion);
+    }
+
     private Map<String, Object> mapearNotificacionDetalle(Notificacion notificacion) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("id", notificacion.getId());
         item.put("mensaje", notificacion.getMensaje());
-        item.put("fechaEnvio", notificacion.getFechaEnvio());
+        item.put("fechaEnvio", notificacion.getFechaEnvio() != null ? notificacion.getFechaEnvio().toString() : null);
         item.put("imagenUrl", notificacion.getImagenUrl());
         item.put("videoUrl", notificacion.getVideoUrl());
         item.put("usuariosEtiquetados", notificacion.getUsuariosEtiquetados());
@@ -449,6 +549,9 @@ public class NotificacionServiceImpl implements NotificacionService {
 
     private Map<String, Object> mapearUsuarioResumen(Usuario usuario) {
         Map<String, Object> item = new LinkedHashMap<>();
+        if (usuario == null) {
+            return item;
+        }
         item.put("id", usuario.getId());
         item.put("nombre", usuario.getNombre());
         item.put("username", usuario.getUsuario());
@@ -476,6 +579,90 @@ public class NotificacionServiceImpl implements NotificacionService {
     private String extraerTexto(Map<String, Object> payload, String key) {
         Object value = payload.get(key);
         return value != null ? value.toString() : null;
+    }
+
+    private LocalDateTime parsearFechaEnvio(String fechaEnvio) {
+        if (fechaEnvio == null || fechaEnvio.isBlank()) {
+            return LocalDateTime.now();
+        }
+        try {
+            return LocalDateTime.parse(fechaEnvio.trim(), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        } catch (Exception ignored) {
+            return LocalDateTime.now();
+        }
+    }
+
+    private String construirUrlPublica(Long id, String tipo) {
+        String base = backendBaseUrl != null ? backendBaseUrl.trim() : "https://conjuntoback.onrender.com";
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base + "/api/notificaciones/" + id + "/" + tipo;
+    }
+
+    private Path resolverDirectorioUploads(Long notificacionId) {
+        String base = uploadsDirConfigurado != null ? uploadsDirConfigurado.trim() : "";
+        if (base.isBlank()) {
+            base = System.getenv("UPLOAD_DIR");
+        }
+        if (base == null || base.isBlank()) {
+            base = System.getProperty("java.io.tmpdir", ".");
+        }
+        return Paths.get(base, "uploads", "notificaciones", notificacionId.toString())
+                .toAbsolutePath()
+                .normalize();
+    }
+
+    private void guardarArchivoNotificacion(Long notificacionId, MultipartFile archivo, String tipo) {
+        try {
+            Path carpeta = resolverDirectorioUploads(notificacionId);
+            Files.createDirectories(carpeta);
+
+            String nombreOriginal = archivo.getOriginalFilename() != null ? archivo.getOriginalFilename() : tipo;
+            String extension = "";
+            int idx = nombreOriginal.lastIndexOf('.');
+            if (idx >= 0) {
+                extension = nombreOriginal.substring(idx);
+            } else if ("imagen".equals(tipo)) {
+                extension = ".jpg";
+            } else if ("video".equals(tipo)) {
+                extension = ".mp4";
+            }
+
+            Path destino = carpeta.resolve(tipo + extension);
+            Files.copy(archivo.getInputStream(), destino, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new IllegalStateException("No se pudo guardar el archivo de la publicación");
+        }
+    }
+
+    private Resource obtenerRecursoNotificacion(Long id, String tipo) {
+        notificacionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Notificación no encontrada"));
+
+        Path carpeta = resolverDirectorioUploads(id);
+        if (!Files.exists(carpeta)) {
+            Path carpetaLegacy = Paths.get("uploads", "notificaciones", id.toString()).toAbsolutePath().normalize();
+            if (Files.exists(carpetaLegacy)) {
+                carpeta = carpetaLegacy;
+            } else {
+                throw new IllegalArgumentException("La publicación no tiene " + tipo);
+            }
+        }
+
+        try {
+            Path encontrado = Files.list(carpeta)
+                    .filter(path -> path.getFileName().toString().startsWith(tipo))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("La publicación no tiene " + tipo));
+            Resource resource = new UrlResource(encontrado.toUri());
+            if (!resource.exists() || !resource.isReadable()) {
+                throw new IllegalArgumentException("Archivo no disponible");
+            }
+            return resource;
+        } catch (IOException e) {
+            throw new IllegalStateException("No se pudo leer el archivo de la publicación");
+        }
     }
 
     private void validarMultimediaOpcional(String url, String campo) {

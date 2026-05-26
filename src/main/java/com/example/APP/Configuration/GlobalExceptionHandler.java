@@ -58,7 +58,7 @@ public class GlobalExceptionHandler {
         log.error("Error de base de datos", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ErrorResponseDto(
-                        "Error al guardar el pago. Verifica que la base de datos tenga las columnas de Mercado Pago actualizadas."
+                        "Error de base de datos. Verifica el esquema (notificaciones: imagen_url, video_url; pagos: metodo_pago PSE)."
                 ));
     }
 

@@ -1,7 +1,8 @@
 package com.example.APP.Service;
 
 import com.example.APP.Model.Notificacion;
-import com.example.APP.Model.Usuario;
+import org.springframework.core.io.Resource;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -20,4 +21,16 @@ public interface NotificacionService {
     List<Map<String, Object>> listarUsuariosParaNotificaciones(String search);
     List<Notificacion> enviarNotificacionRecibo(Map<String, Object> payload);
     void eliminar(Long id);
+    Map<String, Object> mapearPublicacion(Notificacion notificacion);
+
+    Notificacion crearConMultimedia(
+            String mensaje,
+            String fechaEnvio,
+            String usuariosEtiquetados,
+            MultipartFile imagen,
+            MultipartFile video,
+            String usernameAutenticado
+    );
+    Resource obtenerImagen(Long id);
+    Resource obtenerVideo(Long id);
 }
