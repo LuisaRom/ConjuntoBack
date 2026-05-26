@@ -81,6 +81,22 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/accesos/validar-qr").hasAnyRole("ADMINISTRADOR", "CELADOR")
                         .requestMatchers(HttpMethod.DELETE, "/api/accesos/*").hasAnyRole("ADMINISTRADOR", "CELADOR")
                         .requestMatchers(HttpMethod.GET, "/api/quejas/admin/tarjetas").hasAnyRole("ADMINISTRADOR", "CELADOR")
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/pagos/checkout/administracion",
+                                "/api/pagos/crear",
+                                "/api/pagos/checkout",
+                                "/api/pagos/mercadopago",
+                                "/api/pagos/mercadopago/crear",
+                                "/api/pagos/mercado-pago",
+                                "/api/pagos/mercado-pago/crear",
+                                "/api/pagos/confirmar"
+                        ).hasRole("RESIDENTE")
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/pagos/mis-pagos",
+                                "/api/pagos/residente",
+                                "/api/pagos/residente/pagos",
+                                "/api/pagos/sandbox-instrucciones"
+                        ).hasRole("RESIDENTE")
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )

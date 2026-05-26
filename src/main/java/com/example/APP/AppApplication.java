@@ -48,6 +48,7 @@ public class AppApplication {
 		setPropertyFromDotenv(dotenv, "JWT_SECRET", "app.security.jwt-secret");
 		setPropertyFromDotenv(dotenv, "MERCADOPAGO_ACCESS_TOKEN", "mercadopago.access-token");
 		setPropertyFromDotenv(dotenv, "MERCADOPAGO_PUBLIC_KEY", "mercadopago.public-key");
+		setPropertyFromDotenv(dotenv, "MERCADOPAGO_TEST_PAYER_EMAIL", "mercadopago.test-payer-email");
 		setPropertyFromDotenv(dotenv, "FRONTEND_BASE_URL", "app.frontend.base-url");
 		setPropertyFromDotenv(dotenv, "BACKEND_BASE_URL", "app.backend.base-url");
 

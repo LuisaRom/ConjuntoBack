@@ -16,5 +16,6 @@ public interface PagoAdministracionService {
     Map<String, Object> confirmarPagoPorReferencia(String referenciaExterna, String usernameAutenticado);
     List<Map<String, Object>> listarPagosResidente(String usernameAutenticado);
     List<Map<String, Object>> listarPagosAdmin();
+    Map<String, Object> obtenerInstruccionesSandbox();
     void eliminar(Long id);
 }

@@ -39,6 +39,12 @@ public class UsuarioServiceImpl implements UsuarioService {
         if (usuario.getPassword() == null || usuario.getPassword().isBlank()) {
             throw new IllegalArgumentException("El campo 'password' es obligatorio");
         }
+        if (usuario.getRol() == null) {
+            throw new IllegalArgumentException("El campo 'rol' es obligatorio");
+        }
+        if (usuario.getRol() == Usuario.Rol.RESIDENTE) {
+            validarDatosMinimosResidente(usuario.getUsuario(), usuario.getTorre(), usuario.getApartamento());
+        }
         usuario.setPassword(usuario.getPassword().trim());
         return usuarioRepository.save(usuario);
     }
@@ -55,12 +61,7 @@ public class UsuarioServiceImpl implements UsuarioService {
         validarObligatorio(telefono, "telefono");
         validarObligatorio(rolTexto, "rol");
 
-        Usuario.Rol rol;
-        try {
-            rol = Usuario.Rol.valueOf(rolTexto.trim().toUpperCase());
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Rol inválido. Usa RESIDENTE o CELADOR");
-        }
+        Usuario.Rol rol = parsearRolUsuario(rolTexto);
 
         String usuarioTexto = extraerTexto(payload, "usuario");
         String apartamento = extraerTexto(payload, "apartamento");
@@ -158,6 +159,33 @@ public class UsuarioServiceImpl implements UsuarioService {
         if (valor == null || valor.trim().isEmpty()) {
             throw new IllegalArgumentException("El campo '" + nombreCampo + "' es obligatorio");
         }
+    }
+
+    private Usuario.Rol parsearRolUsuario(String rolTexto) {
+        if (rolTexto == null || rolTexto.isBlank()) {
+            throw new IllegalArgumentException("Rol inválido. Usa RESIDENTE o CELADOR");
+        }
+        String normalizado = rolTexto.trim().toUpperCase();
+        return switch (normalizado) {
+            case "RESIDENTE", "RESIDENT" -> Usuario.Rol.RESIDENTE;
+            case "CELADOR", "PORTER", "PORTERO" -> Usuario.Rol.CELADOR;
+            case "ADMINISTRADOR", "ADMIN" -> throw new IllegalArgumentException(
+                    "Este endpoint solo permite RESIDENTE o CELADOR"
+            );
+            default -> {
+                try {
+                    yield Usuario.Rol.valueOf(normalizado);
+                } catch (Exception e) {
+                    throw new IllegalArgumentException("Rol inválido. Usa RESIDENTE o CELADOR");
+                }
+            }
+        };
+    }
+
+    private void validarDatosMinimosResidente(String usuario, String torre, String apartamento) {
+        validarObligatorio(usuario, "usuario");
+        validarObligatorio(torre, "torre");
+        validarObligatorio(apartamento, "apartamento");
     }
 
 }

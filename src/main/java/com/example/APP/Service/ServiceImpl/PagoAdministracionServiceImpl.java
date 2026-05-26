@@ -51,6 +51,9 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
     @Value("${mercadopago.public-key:}")
     private String mercadoPagoPublicKey;
 
+    @Value("${mercadopago.test-payer-email:test_user_co@testuser.com}")
+    private String mercadoPagoTestPayerEmail;
+
     @PostConstruct
     void normalizarTokenMercadoPago() {
         if (mercadoPagoAccessToken != null) {
@@ -58,6 +61,9 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         }
         if (mercadoPagoPublicKey != null) {
             mercadoPagoPublicKey = mercadoPagoPublicKey.trim();
+        }
+        if (mercadoPagoTestPayerEmail != null) {
+            mercadoPagoTestPayerEmail = mercadoPagoTestPayerEmail.trim();
         }
         validarCredencialesMercadoPago();
         if (mercadoPagoAccessToken != null && !mercadoPagoAccessToken.isBlank()) {
@@ -140,9 +146,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         }
         Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
-        if (usuario.getRol() != Usuario.Rol.RESIDENTE) {
-            throw new IllegalArgumentException("Solo los residentes pueden iniciar pagos de administración");
-        }
+        validarResidenteParaPago(usuario);
         validarCredencialesMercadoPagoParaCheckout();
         BigDecimal monto = extraerMontoDePayload(payload);
         if (monto.compareTo(BigDecimal.ZERO) <= 0) {
@@ -200,6 +204,22 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         backUrls.put("pending", pendingUrl);
         backUrls.put("failure", failureUrl);
         preferencePayload.put("back_urls", backUrls);
+        preferencePayload.put("auto_return", "approved");
+
+        Map<String, Object> payer = construirPayerMercadoPago(usuario);
+        if (payer != null) {
+            preferencePayload.put("payer", payer);
+        }
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("usuario_id", usuario.getId());
+        metadata.put("referencia_externa", referenciaExterna);
+        metadata.put("periodo", periodo);
+        preferencePayload.put("metadata", metadata);
+
+        Map<String, Object> paymentMethods = new LinkedHashMap<>();
+        paymentMethods.put("installments", 1);
+        preferencePayload.put("payment_methods", paymentMethods);
 
         Map<?, ?> body = invocarMercadoPago(
                 "https://api.mercadopago.com/checkout/preferences",
@@ -223,8 +243,48 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         pago.setCheckoutUrl(initPoint);
         pago = guardarPagoEnBaseDatos(pago, usuario.getId(), periodo);
 
-        log.info("Checkout creado: pagoId={}, referencia={}", pago.getId(), referenciaExterna);
-        return construirSalidaCheckout(pago, body.get("id").toString(), initPoint, periodo, periodoPago);
+        log.info("Checkout creado: pagoId={}, referencia={}, sandbox={}", pago.getId(), referenciaExterna, esModoSandbox());
+        return construirSalidaCheckout(pago, body.get("id").toString(), initPoint, periodo, periodoPago, usuario);
+    }
+
+    @Override
+    public Map<String, Object> obtenerInstruccionesSandbox() {
+        Map<String, Object> instrucciones = new LinkedHashMap<>();
+        instrucciones.put("sandbox", esModoSandbox());
+        instrucciones.put("emailCompradorObligatorio", resolverEmailPayerSandbox());
+        instrucciones.put("tarjetaDebitoColombia", Map.of(
+                "numero", "4915 1120 5524 6507",
+                "cvv", "123",
+                "vencimiento", "11/30",
+                "titularAprobado", "APRO",
+                "documento", "123456789"
+        ));
+        instrucciones.put("notas", List.of(
+                "En sandbox usa el email de comprador de prueba indicado arriba (no tu correo personal).",
+                "Titular de la tarjeta: APRO para pago aprobado.",
+                "Tipo de tarjeta en el checkout: débito Visa.",
+                "Credenciales en Render: MERCADOPAGO_ACCESS_TOKEN con valor TEST-... (Access Token, no Public Key)."
+        ));
+        return instrucciones;
+    }
+
+    private void validarResidenteParaPago(Usuario usuario) {
+        if (usuario == null) {
+            throw new IllegalArgumentException("Usuario no encontrado");
+        }
+        if (usuario.getRol() == null) {
+            throw new IllegalArgumentException(
+                    "Tu cuenta no tiene rol asignado. Pide al administrador que te configure como RESIDENTE."
+            );
+        }
+        if (usuario.getRol() != Usuario.Rol.RESIDENTE) {
+            throw new IllegalArgumentException(
+                    "Solo los residentes pueden pagar administración. Rol actual: " + usuario.getRol().name()
+            );
+        }
+        if (usuario.getUsuario() == null || usuario.getUsuario().isBlank()) {
+            throw new IllegalArgumentException("Tu cuenta no tiene nombre de usuario válido para iniciar el pago");
+        }
     }
 
     private PagoAdministracion prepararPagoPendienteEnBaseDatos(
@@ -329,6 +389,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
 
         Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
+        validarResidenteParaPago(usuario);
 
         PagoAdministracion pago = pagoAdministracionRepository.findByReferenciaExterna(referenciaExterna)
                 .orElseThrow(() -> new IllegalArgumentException("Pago no encontrado para la referencia enviada"));
@@ -355,6 +416,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
     public List<Map<String, Object>> listarPagosResidente(String usernameAutenticado) {
         Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
+        validarResidenteParaPago(usuario);
         return pagoAdministracionRepository.findByUsuarioIdOrderByIdDesc(usuario.getId())
                 .stream()
                 .map(this::mapearResumenPago)
@@ -470,7 +532,8 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
             String preferenceId,
             String initPoint,
             String periodo,
-            YearMonth periodoPago
+            YearMonth periodoPago,
+            Usuario usuario
     ) {
         Map<String, Object> salida = new LinkedHashMap<>();
         salida.put("pagoId", pago.getId());
@@ -488,8 +551,73 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         salida.put("estadoAdministracion", LocalDate.now().isAfter(periodoPago.atDay(DIA_LIMITE_PAGO_ADMINISTRACION))
                 ? "EN_MORA"
                 : "PENDIENTE_EN_PLAZO");
-        salida.put("mensaje", "Pago creado. Redirige al usuario a Mercado Pago.");
+        salida.put("sandbox", esModoSandbox());
+        if (esModoSandbox()) {
+            salida.put("emailCompradorPrueba", resolverEmailPayerSandbox());
+            salida.put("instruccionesPagoPrueba", obtenerInstruccionesSandbox());
+        }
+        salida.put("usuarioId", usuario.getId());
+        salida.put("usuarioUsername", usuario.getUsuario());
+        salida.put("mensaje", esModoSandbox()
+                ? "Pago creado. En Mercado Pago usa el email de prueba y tarjeta débito Colombia (ver instruccionesPagoPrueba)."
+                : "Pago creado. Redirige al usuario a Mercado Pago.");
         return salida;
+    }
+
+    private Map<String, Object> construirPayerMercadoPago(Usuario usuario) {
+        String email = resolverEmailPayer(usuario);
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+
+        Map<String, Object> payer = new LinkedHashMap<>();
+        agregarNombreApellidoPayer(payer, usuario);
+        payer.put("email", email);
+
+        Map<String, Object> identification = new LinkedHashMap<>();
+        identification.put("type", "CC");
+        identification.put("number", extraerDocumentoIdentidad(usuario));
+        payer.put("identification", identification);
+
+        return payer;
+    }
+
+    private void agregarNombreApellidoPayer(Map<String, Object> payer, Usuario usuario) {
+        String nombreCompleto = usuario.getNombre() != null && !usuario.getNombre().isBlank()
+                ? usuario.getNombre().trim()
+                : "Residente Conjunto";
+        String[] partes = nombreCompleto.split("\\s+", 2);
+        payer.put("name", partes[0]);
+        payer.put("surname", partes.length > 1 ? partes[1] : "App");
+    }
+
+    private String resolverEmailPayer(Usuario usuario) {
+        if (esModoSandbox()) {
+            return resolverEmailPayerSandbox();
+        }
+        String documento = usuario.getDocumento();
+        if (documento != null && documento.contains("@")) {
+            return documento.trim();
+        }
+        return null;
+    }
+
+    private String resolverEmailPayerSandbox() {
+        if (mercadoPagoTestPayerEmail != null && !mercadoPagoTestPayerEmail.isBlank()) {
+            return mercadoPagoTestPayerEmail.trim();
+        }
+        return "test_user_co@testuser.com";
+    }
+
+    private String extraerDocumentoIdentidad(Usuario usuario) {
+        String documento = usuario.getDocumento();
+        if (documento != null) {
+            String soloDigitos = documento.replaceAll("\\D", "");
+            if (soloDigitos.length() >= 6 && soloDigitos.length() <= 12) {
+                return soloDigitos;
+            }
+        }
+        return "123456789";
     }
 
     private Map<String, Object> construirRespuestaPago(PagoAdministracion pago) {

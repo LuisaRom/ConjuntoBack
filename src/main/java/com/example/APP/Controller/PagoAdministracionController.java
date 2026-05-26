@@ -37,6 +37,12 @@ public class PagoAdministracionController {
         return pagoAdministracionService.listarPagosResidente(authentication.getName());
     }
 
+    @GetMapping("/sandbox-instrucciones")
+    @PreAuthorize("hasRole('RESIDENTE')")
+    public Map<String, Object> instruccionesSandboxPago() {
+        return pagoAdministracionService.obtenerInstruccionesSandbox();
+    }
+
     @GetMapping("/residente")
     @PreAuthorize("hasRole('RESIDENTE')")
     public List<Map<String, Object>> listarPagosResidenteAlias(Authentication authentication) {
