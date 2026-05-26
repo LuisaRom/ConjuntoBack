@@ -51,8 +51,11 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
     @Value("${mercadopago.public-key:}")
     private String mercadoPagoPublicKey;
 
-    @Value("${mercadopago.test-payer-email:test_user_co@testuser.com}")
-    private String mercadoPagoTestPayerEmail;
+    @Value("${app.frontend.base-url:http://localhost:5173}")
+    private String frontendBaseUrl;
+
+    @Value("${app.backend.base-url:http://localhost:8080}")
+    private String backendBaseUrl;
 
     @PostConstruct
     void normalizarTokenMercadoPago() {
@@ -61,9 +64,6 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         }
         if (mercadoPagoPublicKey != null) {
             mercadoPagoPublicKey = mercadoPagoPublicKey.trim();
-        }
-        if (mercadoPagoTestPayerEmail != null) {
-            mercadoPagoTestPayerEmail = mercadoPagoTestPayerEmail.trim();
         }
         validarCredencialesMercadoPago();
         if (mercadoPagoAccessToken != null && !mercadoPagoAccessToken.isBlank()) {
@@ -82,46 +82,42 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         }
         if (mercadoPagoPublicKey != null && !mercadoPagoPublicKey.isBlank()
                 && mercadoPagoAccessToken.equals(mercadoPagoPublicKey)) {
-            log.error(
-                    "MERCADOPAGO_ACCESS_TOKEN y MERCADOPAGO_PUBLIC_KEY son iguales. "
-                            + "En Render usa solo el Access Token TEST-7403..., no la Public Key TEST-7f88..."
-            );
+            log.error("MERCADOPAGO_ACCESS_TOKEN y MERCADOPAGO_PUBLIC_KEY son iguales. "
+                    + "En Render usa solo el Access Token TEST-7403..., no la Public Key TEST-7f88...");
         }
         if (mercadoPagoAccessToken.contains("7f88b41a-b185-4466-914c")) {
-            log.error(
-                    "MERCADOPAGO_ACCESS_TOKEN parece ser la Public Key. Usa el Access Token TEST-7403276532353229-..."
-            );
+            log.error("MERCADOPAGO_ACCESS_TOKEN parece ser la Public Key. "
+                    + "Usa el Access Token TEST-7403276532353229-...");
         }
     }
 
     private void validarCredencialesMercadoPagoParaCheckout() {
         if (mercadoPagoAccessToken == null || mercadoPagoAccessToken.isBlank()) {
-            throw new IllegalArgumentException("Falta configurar MERCADOPAGO_ACCESS_TOKEN (Access Token TEST- de prueba)");
+            throw new IllegalArgumentException(
+                    "Falta configurar MERCADOPAGO_ACCESS_TOKEN (Access Token TEST- de prueba)");
         }
         if (mercadoPagoPublicKey != null && !mercadoPagoPublicKey.isBlank()
                 && mercadoPagoAccessToken.equals(mercadoPagoPublicKey)) {
             throw new IllegalArgumentException(
                     "MERCADOPAGO_ACCESS_TOKEN en Render es incorrecto (coincide con la Public Key). "
-                            + "Usa el Access Token largo TEST-7403276532353229-..."
-            );
+                            + "Usa el Access Token largo TEST-7403276532353229-...");
         }
         if (mercadoPagoAccessToken.contains("7f88b41a-b185-4466-914c")) {
             throw new IllegalArgumentException(
-                    "MERCADOPAGO_ACCESS_TOKEN parece ser la Public Key. Configura el Access Token TEST-7403276532353229-..."
-            );
+                    "MERCADOPAGO_ACCESS_TOKEN parece ser la Public Key. "
+                            + "Configura el Access Token TEST-7403276532353229-...");
         }
     }
 
     private boolean esModoSandbox() {
         return mercadoPagoAccessToken != null
-                && (mercadoPagoAccessToken.startsWith("TEST-") || mercadoPagoAccessToken.startsWith("APP_USR-"));
+                && (mercadoPagoAccessToken.startsWith("TEST-")
+                || mercadoPagoAccessToken.startsWith("APP_USR-"));
     }
 
-    @Value("${app.frontend.base-url:http://localhost:5173}")
-    private String frontendBaseUrl;
-
-    @Value("${app.backend.base-url:http://localhost:8080}")
-    private String backendBaseUrl;
+    // -------------------------------------------------------------------------
+    // CRUD básico
+    // -------------------------------------------------------------------------
 
     @Override
     public List<PagoAdministracion> obtenerTodos() {
@@ -139,15 +135,48 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
     }
 
     @Override
-    public Map<String, Object> crearCheckoutAdministracion(Map<String, Object> payload, String usernameAutenticado) {
+    public void eliminar(Long id) {
+        pagoAdministracionRepository.deleteById(id);
+    }
+
+    @Override
+    public Map<String, Object> obtenerInstruccionesSandbox() {
+        Map<String, Object> instrucciones = new LinkedHashMap<>();
+        instrucciones.put("sandbox", esModoSandbox());
+        instrucciones.put("tarjetaPruebaRecomendada", Map.of(
+                "tipo", "Credito Mastercard sandbox",
+                "numero", "5031 7557 3453 0604",
+                "cvv", "123",
+                "vencimiento", "11/30",
+                "titularAprobado", "APRO",
+                "documento", "123456789"
+        ));
+        instrucciones.put("notas", List.of(
+                "Tarjeta: 5031 7557 3453 0604, titular APRO, vence 11/30, CVV 123.",
+                "Abre el checkout en navegador externo, no dentro de la app."
+        ));
+        return instrucciones;
+    }
+
+    // -------------------------------------------------------------------------
+    // Checkout Mercado Pago
+    // -------------------------------------------------------------------------
+
+    @Override
+    public Map<String, Object> crearCheckoutAdministracion(Map<String, Object> payload,
+                                                           String usernameAutenticado) {
         log.info("Iniciando checkout administracion para usuario={}", usernameAutenticado);
+
         if (payload == null || payload.isEmpty()) {
-            throw new IllegalArgumentException("El cuerpo de la solicitud es obligatorio (monto y periodo)");
+            throw new IllegalArgumentException(
+                    "El cuerpo de la solicitud es obligatorio (monto y periodo)");
         }
+
         Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
         validarResidenteParaPago(usuario);
         validarCredencialesMercadoPagoParaCheckout();
+
         BigDecimal monto = extraerMontoDePayload(payload);
         if (monto.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El monto debe ser mayor a 0");
@@ -158,6 +187,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         if (periodo == null || periodo.isBlank()) {
             periodo = YearMonth.now().toString();
         }
+
         YearMonth periodoPago;
         try {
             periodoPago = YearMonth.parse(periodo);
@@ -166,111 +196,198 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         }
 
         if (existePagoAprobadoEnPeriodo(usuario.getId(), periodo)) {
-            throw new IllegalArgumentException("Ya existe un pago aprobado para el periodo " + periodo);
+            throw new IllegalArgumentException(
+                    "Ya existe un pago aprobado para el periodo " + periodo);
         }
 
         int precioEntero = monto.intValue();
         if (precioEntero <= 0) {
-            throw new IllegalArgumentException("El monto debe ser un valor entero mayor a 0 en COP");
+            throw new IllegalArgumentException(
+                    "El monto debe ser un valor entero mayor a 0 en COP");
         }
 
-        // 1) Persistir en BD antes de Mercado Pago (reutiliza un PENDIENTE del mes si existe).
-        PagoAdministracion pago = prepararPagoPendienteEnBaseDatos(usuario, periodo, monto, concepto);
+        // 1) Persistir en BD antes de llamar a Mercado Pago
+        PagoAdministracion pago = prepararPagoPendienteEnBaseDatos(
+                usuario, periodo, monto, concepto);
         String referenciaExterna = pago.getReferenciaExterna();
 
         String urlBackend = asegurarUrlHttpsParaMercadoPago(resolverUrlBackend());
-        // back_urls siempre al backend (pagina estatica). Evita bucles si el front reenvia a MP.
-        String urlRetornoCheckout = urlBackend;
-        log.info("Checkout MP: pagoId={}, ref={}, webhook={}, retorno={}",
-                pago.getId(), referenciaExterna, urlBackend + "/api/pagos/mercadopago/webhook", urlRetornoCheckout);
+        log.info("Checkout MP: pagoId={}, ref={}, webhook={}, backUrls={}",
+                pago.getId(), referenciaExterna,
+                urlBackend + "/api/pagos/mercadopago/webhook", urlBackend);
 
+        // 2) Construir URLs de retorno
         String refCodificada = URLEncoder.encode(referenciaExterna, StandardCharsets.UTF_8);
-        String successUrl = urlRetornoCheckout + "/pagos/resultado?ref=" + refCodificada + "&estado=aprobado";
-        String pendingUrl = urlRetornoCheckout + "/pagos/resultado?ref=" + refCodificada + "&estado=pendiente";
-        String failureUrl = urlRetornoCheckout + "/pagos/resultado?ref=" + refCodificada + "&estado=rechazado";
+        String successUrl = urlBackend + "/pagos/resultado?ref=" + refCodificada + "&estado=aprobado";
+        String pendingUrl = urlBackend + "/pagos/resultado?ref=" + refCodificada + "&estado=pendiente";
+        String failureUrl = urlBackend + "/pagos/resultado?ref=" + refCodificada + "&estado=rechazado";
 
-        // 2) Crear preferencia en Mercado Pago con la referencia ya guardada.
+        // 3) Construir preferencia de pago
         Map<String, Object> preferencePayload = new LinkedHashMap<>();
+
+        // Item
+        String tituloItem = (concepto + " " + periodo);
+        tituloItem = tituloItem.substring(0, Math.min(127, tituloItem.length()));
         Map<String, Object> item = new LinkedHashMap<>();
-        item.put("title", (concepto + " " + periodo).substring(0, Math.min(127, (concepto + " " + periodo).length())));
+        item.put("title", tituloItem);
         item.put("quantity", 1);
         item.put("currency_id", "COP");
         item.put("unit_price", precioEntero);
         preferencePayload.put("items", List.of(item));
+
+        // Payer — se envía siempre (sandbox y producción)
+        // En sandbox Mercado Pago usa sus propios datos de prueba, el payer es solo referencia
+        Map<String, Object> payer = construirPayerMercadoPago(usuario);
+        if (payer != null) {
+            preferencePayload.put("payer", payer);
+        }
+
+        // Referencias y URLs
         preferencePayload.put("external_reference", referenciaExterna);
         preferencePayload.put("statement_descriptor", "CONJUNTO");
         preferencePayload.put("notification_url", urlBackend + "/api/pagos/mercadopago/webhook");
+
         Map<String, Object> backUrls = new LinkedHashMap<>();
         backUrls.put("success", successUrl);
         backUrls.put("pending", pendingUrl);
         backUrls.put("failure", failureUrl);
         preferencePayload.put("back_urls", backUrls);
-        // Sin auto_return: evita bucle "demasiadas redirecciones" en sandbox/WebView.
+        // auto_return desactivado para evitar bucles en sandbox/WebView
+        preferencePayload.put("auto_return", "approved");
 
-        if (!esModoSandbox()) {
-            Map<String, Object> payer = construirPayerMercadoPago(usuario);
-            if (payer != null) {
-                preferencePayload.put("payer", payer);
-            }
-        }
+        // Cuotas
+        Map<String, Object> paymentMethods = new LinkedHashMap<>();
+        paymentMethods.put("installments", 1);
+        preferencePayload.put("payment_methods", paymentMethods);
 
+        // Metadata
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("usuario_id", usuario.getId());
         metadata.put("referencia_externa", referenciaExterna);
         metadata.put("periodo", periodo);
         preferencePayload.put("metadata", metadata);
 
-        Map<String, Object> paymentMethods = new LinkedHashMap<>();
-        paymentMethods.put("installments", 1);
-        preferencePayload.put("payment_methods", paymentMethods);
-
+        // 4) Invocar Mercado Pago
         Map<?, ?> body = invocarMercadoPago(
                 "https://api.mercadopago.com/checkout/preferences",
                 HttpMethod.POST,
-                preferencePayload
-        );
+                preferencePayload);
+
         if (body == null || body.get("id") == null) {
-            throw new IllegalArgumentException("No fue posible crear la preferencia de pago en Mercado Pago");
+            throw new IllegalArgumentException(
+                    "No fue posible crear la preferencia de pago en Mercado Pago");
         }
 
         Object sandboxInitPoint = body.get("sandbox_init_point");
         Object initPointNormal = body.get("init_point");
         if (sandboxInitPoint == null && initPointNormal == null) {
-            throw new IllegalArgumentException("Mercado Pago no devolvió init_point para continuar el pago");
+            throw new IllegalArgumentException(
+                    "Mercado Pago no devolvió init_point para continuar el pago");
         }
 
         String initPoint = resolverInitPointCheckout(sandboxInitPoint, initPointNormal);
 
-        // 3) Actualizar el registro existente con datos de Mercado Pago.
+        // 5) Actualizar registro en BD con datos de Mercado Pago
         pago.setMercadoPagoPreferenceId(body.get("id").toString());
         pago.setCheckoutUrl(initPoint);
         pago = guardarPagoEnBaseDatos(pago, usuario.getId(), periodo);
 
-        log.info("Checkout creado: pagoId={}, referencia={}, sandbox={}", pago.getId(), referenciaExterna, esModoSandbox());
-        return construirSalidaCheckout(pago, body.get("id").toString(), initPoint, periodo, periodoPago, usuario);
+        log.info("Checkout creado: pagoId={}, referencia={}, sandbox={}",
+                pago.getId(), referenciaExterna, esModoSandbox());
+
+        return construirSalidaCheckout(pago, body.get("id").toString(),
+                initPoint, periodo, periodoPago, usuario);
+    }
+
+    // -------------------------------------------------------------------------
+    // Webhook y confirmación
+    // -------------------------------------------------------------------------
+
+    @Override
+    public Map<String, Object> procesarNotificacionMercadoPago(Map<String, Object> payload,
+                                                               String topic, String paymentIdQuery) {
+        try {
+            String paymentId = resolverPaymentId(payload, topic, paymentIdQuery);
+            Map<?, ?> paymentData = consultarPagoMercadoPago(paymentId);
+            Map<String, Object> resultado = actualizarPagoDesdeDatosMercadoPago(paymentData);
+            resultado.put("procesado", true);
+            return resultado;
+        } catch (IllegalArgumentException e) {
+            log.debug("Notificación Mercado Pago sin procesar: {}", e.getMessage());
+            Map<String, Object> ignorada = new LinkedHashMap<>();
+            ignorada.put("procesado", false);
+            ignorada.put("mensaje", e.getMessage());
+            return ignorada;
+        }
     }
 
     @Override
-    public Map<String, Object> obtenerInstruccionesSandbox() {
-        Map<String, Object> instrucciones = new LinkedHashMap<>();
-        instrucciones.put("sandbox", esModoSandbox());
-        instrucciones.put("emailCompradorObligatorio", resolverEmailPayerSandbox());
-        instrucciones.put("tarjetaPruebaRecomendada", Map.of(
-                "tipo", "Credito Mastercard (sandbox)",
-                "numero", "5031 7557 3453 0604",
-                "cvv", "123",
-                "vencimiento", "11/30",
-                "titularAprobado", "APRO",
-                "documento", "123456789"
-        ));
-        instrucciones.put("notas", List.of(
-                "Tarjeta recomendada: 5031 7557 3453 0604, titular APRO, vence 11/30, CVV 123.",
-                "Si ves 'demasiadas redirecciones': borra cookies de mercadopago.com o usa Chrome incognito.",
-                "Abre el checkout en navegador externo, no dentro de la app si se queda cargando.",
-                "Credenciales en Render: MERCADOPAGO_ACCESS_TOKEN con valor TEST-... (Access Token, no Public Key)."
-        ));
-        return instrucciones;
+    public Map<String, Object> confirmarPagoPorReferencia(String referenciaExterna,
+                                                          String usernameAutenticado) {
+        if (referenciaExterna == null || referenciaExterna.isBlank()) {
+            throw new IllegalArgumentException("referenciaExterna es obligatoria");
+        }
+
+        Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
+        validarResidenteParaPago(usuario);
+
+        PagoAdministracion pago = pagoAdministracionRepository
+                .findByReferenciaExterna(referenciaExterna)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Pago no encontrado para la referencia enviada"));
+
+        if (pago.getUsuario() == null || !usuario.getId().equals(pago.getUsuario().getId())) {
+            throw new IllegalArgumentException("No autorizado para confirmar este pago");
+        }
+
+        if (pago.getEstadoPago() == PagoAdministracion.EstadoPago.APROBADO) {
+            return construirRespuestaPago(pago);
+        }
+
+        Map<?, ?> paymentData = buscarPagoMercadoPagoPorReferencia(referenciaExterna);
+        if (paymentData == null) {
+            Map<String, Object> salida = construirRespuestaPago(pago);
+            salida.put("mensaje", "El pago aún no fue confirmado por Mercado Pago");
+            return salida;
+        }
+
+        return actualizarPagoDesdeDatosMercadoPago(paymentData);
     }
+
+    // -------------------------------------------------------------------------
+    // Listados
+    // -------------------------------------------------------------------------
+
+    @Override
+    public List<Map<String, Object>> listarPagosResidente(String usernameAutenticado) {
+        Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
+        validarResidenteParaPago(usuario);
+        return pagoAdministracionRepository
+                .findByUsuarioIdOrderByIdDesc(usuario.getId())
+                .stream()
+                .map(this::mapearResumenPago)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<Map<String, Object>> listarPagosAdmin() {
+        YearMonth periodoActual = YearMonth.now();
+        LocalDate fechaLimite = periodoActual.atDay(DIA_LIMITE_PAGO_ADMINISTRACION);
+        LocalDate hoy = LocalDate.now();
+        List<PagoAdministracion> pagos = pagoAdministracionRepository.findAllByOrderByIdDesc();
+
+        return usuarioRepository.findByRolOrderByNombreAsc(Usuario.Rol.RESIDENTE)
+                .stream()
+                .map(residente -> mapearEstadoPagoResidente(
+                        residente, pagos, periodoActual, fechaLimite, hoy))
+                .collect(Collectors.toList());
+    }
+
+    // -------------------------------------------------------------------------
+    // Métodos privados — validación
+    // -------------------------------------------------------------------------
 
     private void validarResidenteParaPago(Usuario usuario) {
         if (usuario == null) {
@@ -278,32 +395,38 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         }
         if (usuario.getRol() == null) {
             throw new IllegalArgumentException(
-                    "Tu cuenta no tiene rol asignado. Pide al administrador que te configure como RESIDENTE."
-            );
+                    "Tu cuenta no tiene rol asignado. "
+                            + "Pide al administrador que te configure como RESIDENTE.");
         }
         if (usuario.getRol() != Usuario.Rol.RESIDENTE) {
             throw new IllegalArgumentException(
-                    "Solo los residentes pueden pagar administración. Rol actual: " + usuario.getRol().name()
-            );
+                    "Solo los residentes pueden pagar administración. "
+                            + "Rol actual: " + usuario.getRol().name());
         }
         if (usuario.getUsuario() == null || usuario.getUsuario().isBlank()) {
-            throw new IllegalArgumentException("Tu cuenta no tiene nombre de usuario válido para iniciar el pago");
+            throw new IllegalArgumentException(
+                    "Tu cuenta no tiene nombre de usuario válido para iniciar el pago");
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Métodos privados — BD
+    // -------------------------------------------------------------------------
+
     private PagoAdministracion prepararPagoPendienteEnBaseDatos(
-            Usuario usuario, String periodo, BigDecimal monto, String concepto
-    ) {
+            Usuario usuario, String periodo, BigDecimal monto, String concepto) {
+
         List<PagoAdministracion> pendientes = pagoAdministracionRepository
                 .findByUsuarioIdAndPeriodoAndEstadoPagoOrderByIdDesc(
                         usuario.getId(), periodo, PagoAdministracion.EstadoPago.PENDIENTE);
 
+        // Marcar duplicados como RECHAZADO
         for (int i = 1; i < pendientes.size(); i++) {
             PagoAdministracion duplicado = pendientes.get(i);
             duplicado.setEstadoPago(PagoAdministracion.EstadoPago.RECHAZADO);
             try {
                 pagoAdministracionRepository.save(duplicado);
-                log.info("Pago PENDIENTE duplicado marcado RECHAZADO: id={}, periodo={}", duplicado.getId(), periodo);
+                log.info("Pago PENDIENTE duplicado marcado RECHAZADO: id={}", duplicado.getId());
             } catch (DataAccessException ex) {
                 log.warn("No se pudo marcar duplicado RECHAZADO id={}", duplicado.getId(), ex);
             }
@@ -341,18 +464,19 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         return "ADM-" + usuarioId + "-" + UUID.randomUUID();
     }
 
-    private PagoAdministracion guardarPagoEnBaseDatos(PagoAdministracion pago, Long usuarioId, String periodo) {
+    private PagoAdministracion guardarPagoEnBaseDatos(PagoAdministracion pago,
+                                                      Long usuarioId, String periodo) {
         try {
             return pagoAdministracionRepository.save(pago);
         } catch (DataAccessException ex) {
-            String causa = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
-            log.error(
-                    "Error guardando pago en BD (usuario={}, periodo={}, metodoPago={}, estadoPago={}, causa={})",
-                    usuarioId, periodo, pago.getMetodoPago(), pago.getEstadoPago(), causa, ex
-            );
+            String causa = ex.getMostSpecificCause() != null
+                    ? ex.getMostSpecificCause().getMessage()
+                    : ex.getMessage();
+            log.error("Error guardando pago en BD (usuario={}, periodo={}, causa={})",
+                    usuarioId, periodo, causa, ex);
             throw new IllegalArgumentException(
-                    "No se pudo registrar el pago en la base de datos. Contacta al administrador o intenta más tarde."
-            );
+                    "No se pudo registrar el pago en la base de datos. "
+                            + "Contacta al administrador o intenta más tarde.");
         }
     }
 
@@ -361,129 +485,48 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
             return pagoAdministracionRepository.existsByUsuarioIdAndPeriodoAndEstadoPago(
                     usuarioId, periodo, PagoAdministracion.EstadoPago.APROBADO);
         } catch (DataAccessException ex) {
-            log.warn("Consulta existsBy falló, usando historial en memoria (usuario={}, periodo={})", usuarioId, periodo, ex);
+            log.warn("Consulta existsBy falló, usando historial (usuario={}, periodo={})",
+                    usuarioId, periodo, ex);
             return pagoAdministracionRepository.findByUsuarioId(usuarioId).stream()
                     .anyMatch(p -> periodo.equals(p.getPeriodo())
                             && p.getEstadoPago() == PagoAdministracion.EstadoPago.APROBADO);
         }
     }
 
-    @Override
-    public Map<String, Object> procesarNotificacionMercadoPago(Map<String, Object> payload, String topic, String paymentIdQuery) {
-        try {
-            String paymentId = resolverPaymentId(payload, topic, paymentIdQuery);
-            Map<?, ?> paymentData = consultarPagoMercadoPago(paymentId);
-            Map<String, Object> resultado = actualizarPagoDesdeDatosMercadoPago(paymentData);
-            resultado.put("procesado", true);
-            return resultado;
-        } catch (IllegalArgumentException e) {
-            log.debug("Notificación Mercado Pago sin procesar: {}", e.getMessage());
-            Map<String, Object> ignorada = new LinkedHashMap<>();
-            ignorada.put("procesado", false);
-            ignorada.put("mensaje", e.getMessage());
-            return ignorada;
-        }
-    }
+    // -------------------------------------------------------------------------
+    // Métodos privados — Mercado Pago
+    // -------------------------------------------------------------------------
 
-    @Override
-    public Map<String, Object> confirmarPagoPorReferencia(String referenciaExterna, String usernameAutenticado) {
-        if (referenciaExterna == null || referenciaExterna.isBlank()) {
-            throw new IllegalArgumentException("referenciaExterna es obligatoria");
-        }
-
-        Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
-                .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
-        validarResidenteParaPago(usuario);
-
-        PagoAdministracion pago = pagoAdministracionRepository.findByReferenciaExterna(referenciaExterna)
-                .orElseThrow(() -> new IllegalArgumentException("Pago no encontrado para la referencia enviada"));
-
-        if (pago.getUsuario() == null || !usuario.getId().equals(pago.getUsuario().getId())) {
-            throw new IllegalArgumentException("No autorizado para confirmar este pago");
-        }
-
-        if (pago.getEstadoPago() == PagoAdministracion.EstadoPago.APROBADO) {
-            return construirRespuestaPago(pago);
-        }
-
-        Map<?, ?> paymentData = buscarPagoMercadoPagoPorReferencia(referenciaExterna);
-        if (paymentData == null) {
-            Map<String, Object> salida = construirRespuestaPago(pago);
-            salida.put("mensaje", "El pago aún no fue confirmado por Mercado Pago");
-            return salida;
-        }
-
-        return actualizarPagoDesdeDatosMercadoPago(paymentData);
-    }
-
-    @Override
-    public List<Map<String, Object>> listarPagosResidente(String usernameAutenticado) {
-        Usuario usuario = usuarioRepository.findByUsuario(usernameAutenticado)
-                .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
-        validarResidenteParaPago(usuario);
-        return pagoAdministracionRepository.findByUsuarioIdOrderByIdDesc(usuario.getId())
-                .stream()
-                .map(this::mapearResumenPago)
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public List<Map<String, Object>> listarPagosAdmin() {
-        YearMonth periodoActual = YearMonth.now();
-        LocalDate fechaLimite = periodoActual.atDay(DIA_LIMITE_PAGO_ADMINISTRACION);
-        LocalDate hoy = LocalDate.now();
-        List<PagoAdministracion> pagos = pagoAdministracionRepository.findAllByOrderByIdDesc();
-
-        return usuarioRepository.findByRolOrderByNombreAsc(Usuario.Rol.RESIDENTE)
-                .stream()
-                .map(residente -> mapearEstadoPagoResidente(residente, pagos, periodoActual, fechaLimite, hoy))
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public void eliminar(Long id) {
-        pagoAdministracionRepository.deleteById(id);
-    }
-
-    private String resolverPaymentId(Map<String, Object> payload, String topic, String paymentIdQuery) {
-        if ("payment".equalsIgnoreCase(topic) && paymentIdQuery != null && !paymentIdQuery.isBlank()) {
+    private String resolverPaymentId(Map<String, Object> payload, String topic,
+                                     String paymentIdQuery) {
+        if ("payment".equalsIgnoreCase(topic)
+                && paymentIdQuery != null && !paymentIdQuery.isBlank()) {
             return paymentIdQuery.trim();
         }
-
         if (payload != null) {
             String type = extraerTexto(payload.get("type"));
             if ("payment".equalsIgnoreCase(type)) {
                 Object data = payload.get("data");
                 if (data instanceof Map<?, ?> dataMap) {
                     String idFromData = extraerTexto(dataMap.get("id"));
-                    if (idFromData != null) {
-                        return idFromData;
-                    }
+                    if (idFromData != null) return idFromData;
                 }
             }
-
             String paymentId = extraerTexto(payload.get("payment_id"));
-            if (paymentId != null) {
-                return paymentId;
-            }
-
+            if (paymentId != null) return paymentId;
             String dataId = extraerTexto(payload.get("data.id"));
-            if (dataId != null) {
-                return dataId;
-            }
+            if (dataId != null) return dataId;
         }
-
         throw new IllegalArgumentException("No se recibió identificador de pago de Mercado Pago");
     }
 
     private Map<?, ?> consultarPagoMercadoPago(String paymentId) {
         Map<?, ?> paymentData = invocarMercadoPago(
                 "https://api.mercadopago.com/v1/payments/" + paymentId,
-                HttpMethod.GET,
-                null
-        );
+                HttpMethod.GET, null);
         if (paymentData == null || paymentData.get("id") == null) {
-            throw new IllegalArgumentException("Mercado Pago no devolvió información del pago " + paymentId);
+            throw new IllegalArgumentException(
+                    "Mercado Pago no devolvió información del pago " + paymentId);
         }
         return paymentData;
     }
@@ -491,19 +534,11 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
     private Map<?, ?> buscarPagoMercadoPagoPorReferencia(String referenciaExterna) {
         String encodedRef = URLEncoder.encode(referenciaExterna, StandardCharsets.UTF_8);
         String url = "https://api.mercadopago.com/v1/payments/search"
-                + "?sort=date_created&criteria=desc"
-                + "&external_reference=" + encodedRef;
-
+                + "?sort=date_created&criteria=desc&external_reference=" + encodedRef;
         Map<?, ?> searchResult = invocarMercadoPago(url, HttpMethod.GET, null);
-        if (searchResult == null) {
-            return null;
-        }
-
+        if (searchResult == null) return null;
         Object resultsObj = searchResult.get("results");
-        if (!(resultsObj instanceof List<?> results) || results.isEmpty()) {
-            return null;
-        }
-
+        if (!(resultsObj instanceof List<?> results) || results.isEmpty()) return null;
         Object first = results.get(0);
         return first instanceof Map<?, ?> paymentMap ? paymentMap : null;
     }
@@ -517,8 +552,10 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
             throw new IllegalArgumentException("Mercado Pago no devolvió external_reference");
         }
 
-        PagoAdministracion pago = pagoAdministracionRepository.findByReferenciaExterna(referenciaExterna)
-                .orElseThrow(() -> new IllegalArgumentException("Pago no encontrado para la referencia enviada"));
+        PagoAdministracion pago = pagoAdministracionRepository
+                .findByReferenciaExterna(referenciaExterna)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Pago no encontrado para la referencia enviada"));
 
         PagoAdministracion.EstadoPago nuevoEstado = mapearEstado(estado);
         pago.setMercadoPagoPaymentId(paymentId);
@@ -527,52 +564,93 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
             pago.setFechaPago(LocalDateTime.now());
         }
         pagoAdministracionRepository.save(pago);
-
         return construirRespuestaPago(pago);
     }
 
-    private Map<String, Object> construirSalidaCheckout(
-            PagoAdministracion pago,
-            String preferenceId,
-            String initPoint,
-            String periodo,
-            YearMonth periodoPago,
-            Usuario usuario
-    ) {
-        Map<String, Object> salida = new LinkedHashMap<>();
-        salida.put("pagoId", pago.getId());
-        salida.put("estado", pago.getEstadoPago() != null ? pago.getEstadoPago().name() : "PENDIENTE");
-        salida.put("estadoPago", pago.getEstadoPago() != null ? pago.getEstadoPago().name() : "PENDIENTE");
-        salida.put("metodoPago", "Pago en linea");
-        salida.put("referenciaExterna", pago.getReferenciaExterna());
-        salida.put("mercadoPagoPreferenceId", preferenceId);
-        salida.put("initPoint", initPoint);
-        salida.put("checkoutUrl", initPoint);
-        salida.put("sandboxInitPoint", initPoint);
-        salida.put("periodo", periodo);
-        salida.put("diaLimitePago", DIA_LIMITE_PAGO_ADMINISTRACION);
-        salida.put("fechaLimitePago", periodoPago.atDay(DIA_LIMITE_PAGO_ADMINISTRACION).toString());
-        salida.put("estadoAdministracion", LocalDate.now().isAfter(periodoPago.atDay(DIA_LIMITE_PAGO_ADMINISTRACION))
-                ? "EN_MORA"
-                : "PENDIENTE_EN_PLAZO");
-        salida.put("sandbox", esModoSandbox());
-        if (esModoSandbox()) {
-            salida.put("emailCompradorPrueba", resolverEmailPayerSandbox());
-            salida.put("instruccionesPagoPrueba", obtenerInstruccionesSandbox());
+    private Map<?, ?> invocarMercadoPago(String url, HttpMethod method, Object body) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(mercadoPagoAccessToken);
+        HttpEntity<?> entity = body != null
+                ? new HttpEntity<>(body, headers)
+                : new HttpEntity<>(headers);
+        try {
+            ResponseEntity<Map> response = restTemplate.exchange(url, method, entity, Map.class);
+            return response.getBody();
+        } catch (HttpStatusCodeException ex) {
+            String detalle = ex.getResponseBodyAsString();
+            if (detalle != null && detalle.length() > 300) {
+                detalle = detalle.substring(0, 300) + "...";
+            }
+            log.error("Error Mercado Pago HTTP {}: {}", ex.getStatusCode().value(), detalle);
+            if (ex.getStatusCode().value() == 401) {
+                throw new IllegalArgumentException(
+                        "Mercado Pago rechazó el Access Token (401). "
+                                + "Verifica MERCADOPAGO_ACCESS_TOKEN en Render. Detalle: " + detalle);
+            }
+            throw new IllegalArgumentException(
+                    "Error de Mercado Pago (" + ex.getStatusCode().value() + "): " + detalle);
+        } catch (RestClientException ex) {
+            throw new IllegalArgumentException(
+                    "No fue posible comunicarse con Mercado Pago: " + ex.getMessage());
         }
-        salida.put("usuarioId", usuario.getId());
-        salida.put("usuarioUsername", usuario.getUsuario());
-        salida.put("mensaje", esModoSandbox()
-                ? "Pago creado. Usa tarjeta 5031 7557 3453 0604, titular APRO (ver instruccionesPagoPrueba)."
-                : "Pago creado. Redirige al usuario a Mercado Pago.");
-        return salida;
     }
 
-    private Map<String, Object> construirPayerMercadoPago(Usuario usuario) {
-        String email = resolverEmailPayer(usuario);
-        if (email == null || email.isBlank()) {
-            return null;
+    private String resolverInitPointCheckout(Object sandboxInitPoint, Object initPointNormal) {
+        // En sandbox usar sandbox_init_point; en producción usar init_point
+        if (esModoSandbox() && sandboxInitPoint != null) {
+            return sandboxInitPoint.toString();
         }
+        if (initPointNormal != null) {
+            return initPointNormal.toString();
+        }
+        if (sandboxInitPoint != null) {
+            return sandboxInitPoint.toString();
+        }
+        throw new IllegalArgumentException("Mercado Pago no devolvió URL de checkout");
+    }
+
+    // -------------------------------------------------------------------------
+    // Métodos privados — URLs
+    // -------------------------------------------------------------------------
+
+    private String resolverUrlBackend() {
+        return normalizarBaseUrl(resolverUrlEfectiva(backendBaseUrl, "BACKEND_BASE_URL"));
+    }
+
+    private String resolverUrlEfectiva(String configurada, String envKey) {
+        String envExplicita = System.getenv(envKey);
+        if (envExplicita != null && !envExplicita.isBlank()) return envExplicita.trim();
+        String renderUrl = System.getenv("RENDER_EXTERNAL_URL");
+        if (renderUrl != null && !renderUrl.isBlank()) return renderUrl.trim();
+        if (configurada != null && !configurada.isBlank()) return configurada.trim();
+        return "https://conjuntoback.onrender.com";
+    }
+
+    private String normalizarBaseUrl(String url) {
+        String valor = url.trim();
+        return valor.endsWith("/") ? valor.substring(0, valor.length() - 1) : valor;
+    }
+
+    private String asegurarUrlHttpsParaMercadoPago(String url) {
+        String valor = normalizarBaseUrl(url);
+        if (valor.startsWith("https://")) return valor;
+        if (valor.startsWith("http://")) {
+            log.warn("URL HTTP detectada para Mercado Pago ({}). Usando URL HTTPS pública.", valor);
+            return normalizarBaseUrl(resolverUrlEfectiva("", "RENDER_EXTERNAL_URL"));
+        }
+        return "https://conjuntoback.onrender.com";
+    }
+
+    // -------------------------------------------------------------------------
+    // Métodos privados — Payer
+    // -------------------------------------------------------------------------
+
+    private Map<String, Object> construirPayerMercadoPago(Usuario usuario) {
+        // En sandbox MP ignora el email del payer y usa sus propios datos de prueba
+        // pero igual se envía para que la preferencia sea válida
+        String email = resolverEmailPayer(usuario);
+        if (email == null || email.isBlank()) return null;
 
         Map<String, Object> payer = new LinkedHashMap<>();
         agregarNombreApellidoPayer(payer, usuario);
@@ -587,7 +665,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
     }
 
     private void agregarNombreApellidoPayer(Map<String, Object> payer, Usuario usuario) {
-        String nombreCompleto = usuario.getNombre() != null && !usuario.getNombre().isBlank()
+        String nombreCompleto = (usuario.getNombre() != null && !usuario.getNombre().isBlank())
                 ? usuario.getNombre().trim()
                 : "Residente Conjunto";
         String[] partes = nombreCompleto.split("\\s+", 2);
@@ -597,150 +675,182 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
 
     private String resolverEmailPayer(Usuario usuario) {
         if (esModoSandbox()) {
-            return resolverEmailPayerSandbox();
+            // En sandbox se usa un email genérico de prueba
+            // MP no valida el correo, solo necesita que tenga formato válido
+            return "test_payer_" + usuario.getId() + "@testuser.com";
         }
+        // En producción usar el documento si tiene formato de email
         String documento = usuario.getDocumento();
-        if (documento != null && documento.contains("@")) {
-            return documento.trim();
-        }
+        if (documento != null && documento.contains("@")) return documento.trim();
         return null;
-    }
-
-    private String resolverEmailPayerSandbox() {
-        if (mercadoPagoTestPayerEmail != null && !mercadoPagoTestPayerEmail.isBlank()) {
-            return mercadoPagoTestPayerEmail.trim();
-        }
-        return "test_user_co@testuser.com";
     }
 
     private String extraerDocumentoIdentidad(Usuario usuario) {
         String documento = usuario.getDocumento();
         if (documento != null) {
             String soloDigitos = documento.replaceAll("\\D", "");
-            if (soloDigitos.length() >= 6 && soloDigitos.length() <= 12) {
-                return soloDigitos;
-            }
+            if (soloDigitos.length() >= 6 && soloDigitos.length() <= 12) return soloDigitos;
         }
         return "123456789";
+    }
+
+    // -------------------------------------------------------------------------
+    // Métodos privados — Construcción de respuestas
+    // -------------------------------------------------------------------------
+
+    private Map<String, Object> construirSalidaCheckout(
+            PagoAdministracion pago, String preferenceId, String initPoint,
+            String periodo, YearMonth periodoPago, Usuario usuario) {
+
+        Map<String, Object> salida = new LinkedHashMap<>();
+        salida.put("pagoId", pago.getId());
+        salida.put("estado", pago.getEstadoPago() != null ? pago.getEstadoPago().name() : "PENDIENTE");
+        salida.put("estadoPago", pago.getEstadoPago() != null ? pago.getEstadoPago().name() : "PENDIENTE");
+        salida.put("metodoPago", "Pago en linea");
+        salida.put("referenciaExterna", pago.getReferenciaExterna());
+        salida.put("mercadoPagoPreferenceId", preferenceId);
+        salida.put("initPoint", initPoint);
+        salida.put("checkoutUrl", initPoint);
+        salida.put("sandboxInitPoint", initPoint);
+        salida.put("periodo", periodo);
+        salida.put("diaLimitePago", DIA_LIMITE_PAGO_ADMINISTRACION);
+        salida.put("fechaLimitePago",
+                periodoPago.atDay(DIA_LIMITE_PAGO_ADMINISTRACION).toString());
+        salida.put("estadoAdministracion",
+                LocalDate.now().isAfter(periodoPago.atDay(DIA_LIMITE_PAGO_ADMINISTRACION))
+                        ? "EN_MORA" : "PENDIENTE_EN_PLAZO");
+        salida.put("sandbox", esModoSandbox());
+        salida.put("usuarioId", usuario.getId());
+        salida.put("usuarioUsername", usuario.getUsuario());
+
+        if (esModoSandbox()) {
+            salida.put("mensaje",
+                    "Pago creado en modo prueba. "
+                            + "Usa tarjeta: 5031 7557 3453 0604, titular: APRO, vence: 11/30, CVV: 123.");
+        } else {
+            salida.put("mensaje", "Pago creado. Redirige al usuario a Mercado Pago.");
+        }
+        return salida;
     }
 
     private Map<String, Object> construirRespuestaPago(PagoAdministracion pago) {
         Map<String, Object> salida = new LinkedHashMap<>();
         salida.put("pagoId", pago.getId());
         salida.put("referenciaExterna", pago.getReferenciaExterna());
-        salida.put("estadoPago", pago.getEstadoPago() != null ? pago.getEstadoPago().name() : null);
-        salida.put("fechaPago", pago.getFechaPago() != null ? pago.getFechaPago().toString() : null);
+        salida.put("estadoPago",
+                pago.getEstadoPago() != null ? pago.getEstadoPago().name() : null);
+        salida.put("fechaPago",
+                pago.getFechaPago() != null ? pago.getFechaPago().toString() : null);
         salida.put("mercadoPagoPaymentId", pago.getMercadoPagoPaymentId());
         salida.put("mensaje", mensajeEstado(pago.getEstadoPago()));
         return salida;
     }
 
-    private Map<?, ?> invocarMercadoPago(String url, HttpMethod method, Object body) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(mercadoPagoAccessToken);
+    // -------------------------------------------------------------------------
+    // Métodos privados — Mapeo y utilidades
+    // -------------------------------------------------------------------------
 
-        HttpEntity<?> entity = body != null ? new HttpEntity<>(body, headers) : new HttpEntity<>(headers);
+    private Map<String, Object> mapearResumenPago(PagoAdministracion pago) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", pago.getId());
+        item.put("monto", pago.getMonto());
+        item.put("fechaPago", pago.getFechaPago() != null ? pago.getFechaPago().toString() : null);
+        item.put("metodoPago", metodoPagoParaApi(pago.getMetodoPago()));
+        item.put("estadoPago",
+                pago.getEstadoPago() != null ? pago.getEstadoPago().name() : null);
+        item.put("concepto", pago.getConcepto());
+        item.put("periodo", pago.getPeriodo());
+        item.put("referenciaExterna", pago.getReferenciaExterna());
+        item.put("mercadoPagoPreferenceId", pago.getMercadoPagoPreferenceId());
+        item.put("mercadoPagoPaymentId", pago.getMercadoPagoPaymentId());
+        item.put("checkoutUrl", pago.getCheckoutUrl());
+        agregarDatosVencimientoPago(item, pago);
+        if (pago.getUsuario() != null) {
+            item.put("usuarioId", pago.getUsuario().getId());
+            item.put("usuarioNombre", pago.getUsuario().getNombre());
+            item.put("usuarioUsername", pago.getUsuario().getUsuario());
+        }
+        return item;
+    }
 
+    private void agregarDatosVencimientoPago(Map<String, Object> item, PagoAdministracion pago) {
+        if (pago.getPeriodo() == null || pago.getPeriodo().isBlank()) return;
         try {
-            ResponseEntity<Map> response = restTemplate.exchange(url, method, entity, Map.class);
-            return response.getBody();
-        } catch (HttpStatusCodeException ex) {
-            String detalle = ex.getResponseBodyAsString();
-            if (detalle != null && detalle.length() > 300) {
-                detalle = detalle.substring(0, 300) + "...";
-            }
-            if (ex.getStatusCode().value() == 401) {
-                throw new IllegalArgumentException(
-                        "Mercado Pago rechazó el Access Token (401). En Render usa MERCADOPAGO_ACCESS_TOKEN "
-                                + "con el Access Token TEST-7403276532353229-... (no la Public Key TEST-7f88...). "
-                                + "Detalle: " + detalle
-                );
-            }
-            throw new IllegalArgumentException("Error de Mercado Pago (" + ex.getStatusCode().value() + "): " + detalle);
-        } catch (RestClientException ex) {
-            throw new IllegalArgumentException("No fue posible comunicarse con Mercado Pago: " + ex.getMessage());
+            LocalDate fechaLimite = YearMonth.parse(pago.getPeriodo())
+                    .atDay(DIA_LIMITE_PAGO_ADMINISTRACION);
+            item.put("diaLimitePago", DIA_LIMITE_PAGO_ADMINISTRACION);
+            item.put("fechaLimitePago", fechaLimite.toString());
+            item.put("pagoExtemporaneo",
+                    pago.getFechaPago() != null
+                            && pago.getFechaPago().toLocalDate().isAfter(fechaLimite));
+        } catch (Exception ignored) {
+            // Compatibilidad con periodos con formato no ISO
         }
     }
 
-    private String resolverInitPointCheckout(Object sandboxInitPoint, Object initPointNormal) {
-        if (esModoSandbox() && sandboxInitPoint != null) {
-            return sandboxInitPoint.toString();
-        }
-        if (sandboxInitPoint != null) {
-            return sandboxInitPoint.toString();
-        }
-        if (initPointNormal != null) {
-            return initPointNormal.toString();
-        }
-        throw new IllegalArgumentException("Mercado Pago no devolvió URL de checkout");
+    private Map<String, Object> mapearEstadoPagoResidente(
+            Usuario residente, List<PagoAdministracion> todosLosPagos,
+            YearMonth periodoActual, LocalDate fechaLimite, LocalDate hoy) {
+
+        List<PagoAdministracion> pagosResidente = todosLosPagos.stream()
+                .filter(p -> p.getUsuario() != null
+                        && residente.getId().equals(p.getUsuario().getId()))
+                .toList();
+
+        List<PagoAdministracion> pagosPeriodo = pagosResidente.stream()
+                .filter(p -> periodoActual.toString().equals(p.getPeriodo()))
+                .toList();
+
+        Optional<PagoAdministracion> pagoAprobado = pagosPeriodo.stream()
+                .filter(p -> p.getEstadoPago() == PagoAdministracion.EstadoPago.APROBADO)
+                .findFirst();
+
+        Optional<PagoAdministracion> ultimoPago = pagosPeriodo.stream().findFirst();
+        String estadoAdministracion = calcularEstadoAdministracion(pagoAprobado, fechaLimite, hoy);
+
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("usuarioId", residente.getId());
+        item.put("usuarioNombre", residente.getNombre());
+        item.put("usuarioUsername", residente.getUsuario());
+        item.put("torre", residente.getTorre());
+        item.put("apartamento", residente.getApartamento());
+        item.put("periodoActual", periodoActual.toString());
+        item.put("diaLimitePago", DIA_LIMITE_PAGO_ADMINISTRACION);
+        item.put("fechaLimitePago", fechaLimite.toString());
+        item.put("estadoAdministracion", estadoAdministracion);
+        item.put("estaAlDia", "AL_DIA".equals(estadoAdministracion));
+        item.put("estaEnMora", "EN_MORA".equals(estadoAdministracion));
+        item.put("diasMora", calcularDiasMora(estadoAdministracion, fechaLimite, hoy));
+        item.put("pagoPeriodoActual", pagoAprobado.or(() -> ultimoPago)
+                .map(this::mapearResumenPago).orElse(null));
+        item.put("historialPagos", pagosResidente.stream()
+                .map(this::mapearResumenPago).toList());
+        return item;
     }
 
-    private String resolverUrlBackend() {
-        return normalizarBaseUrl(resolverUrlEfectiva(backendBaseUrl, "BACKEND_BASE_URL"));
+    private String calcularEstadoAdministracion(
+            Optional<PagoAdministracion> pagoAprobado,
+            LocalDate fechaLimite, LocalDate hoy) {
+        if (pagoAprobado.isPresent()) {
+            LocalDate fechaPago = pagoAprobado.get().getFechaPago() != null
+                    ? pagoAprobado.get().getFechaPago().toLocalDate() : hoy;
+            return fechaPago.isAfter(fechaLimite) ? "PAGADO_EN_MORA" : "AL_DIA";
+        }
+        return hoy.isAfter(fechaLimite) ? "EN_MORA" : "PENDIENTE_EN_PLAZO";
     }
 
-    private String resolverUrlRetorno(Map<String, Object> payload) {
-        String desdePayload = extraerTexto(payload.get("urlRetorno"));
-        if (desdePayload == null) {
-            desdePayload = extraerTexto(payload.get("returnBaseUrl"));
-        }
-        if (desdePayload == null) {
-            desdePayload = extraerTexto(payload.get("frontendBaseUrl"));
-        }
-        if (desdePayload != null && !desdePayload.isBlank()) {
-            return normalizarBaseUrl(desdePayload);
-        }
-        return normalizarBaseUrl(resolverUrlEfectiva(frontendBaseUrl, "FRONTEND_BASE_URL"));
-    }
-
-    private String resolverUrlEfectiva(String configurada, String envKey) {
-        String envExplicita = System.getenv(envKey);
-        if (envExplicita != null && !envExplicita.isBlank()) {
-            return envExplicita.trim();
-        }
-        String renderUrl = System.getenv("RENDER_EXTERNAL_URL");
-        if (renderUrl != null && !renderUrl.isBlank()) {
-            return renderUrl.trim();
-        }
-        if (configurada != null && !configurada.isBlank()) {
-            return configurada.trim();
-        }
-        return "https://conjuntoback.onrender.com";
-    }
-
-    private String normalizarBaseUrl(String url) {
-        String valor = url.trim();
-        if (valor.endsWith("/")) {
-            valor = valor.substring(0, valor.length() - 1);
-        }
-        return valor;
+    private long calcularDiasMora(String estado, LocalDate fechaLimite, LocalDate hoy) {
+        if (!"EN_MORA".equals(estado)) return 0;
+        return Math.max(0, ChronoUnit.DAYS.between(fechaLimite, hoy));
     }
 
     private BigDecimal extraerMontoDePayload(Map<String, Object> payload) {
         Object montoRaw = payload.get("monto");
-        if (montoRaw == null) {
-            montoRaw = payload.get("valor");
-        }
+        if (montoRaw == null) montoRaw = payload.get("valor");
         if (montoRaw == null) {
             throw new IllegalArgumentException("El campo monto o valor es obligatorio");
         }
         return extraerMonto(montoRaw);
-    }
-
-    /**
-     * Mercado Pago rechaza back_urls y notification_url con HTTP (error 400 invalid_back_urls).
-     */
-    private String asegurarUrlHttpsParaMercadoPago(String url) {
-        String valor = normalizarBaseUrl(url);
-        if (valor.startsWith("https://")) {
-            return valor;
-        }
-        if (valor.startsWith("http://")) {
-            log.warn("URL HTTP detectada para Mercado Pago ({}). Se usará URL pública HTTPS.", valor);
-            return normalizarBaseUrl(resolverUrlEfectiva("", "RENDER_EXTERNAL_URL"));
-        }
-        return "https://conjuntoback.onrender.com";
     }
 
     private String extraerConceptoDePayload(Map<String, Object> payload) {
@@ -761,7 +871,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         try {
             return new BigDecimal(montoObj.toString());
         } catch (NumberFormatException ex) {
-            throw new IllegalArgumentException("El monto no es válido");
+            throw new IllegalArgumentException("El monto no es válido: " + montoObj);
         }
     }
 
@@ -769,128 +879,26 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         return valor != null ? valor.toString().trim() : null;
     }
 
-    private PagoAdministracion.EstadoPago mapearEstado(String estadoMercadoPago) {
-        if (estadoMercadoPago == null) {
-            return PagoAdministracion.EstadoPago.PENDIENTE;
-        }
-        return switch (estadoMercadoPago.toLowerCase()) {
+    private PagoAdministracion.EstadoPago mapearEstado(String estadoMP) {
+        if (estadoMP == null) return PagoAdministracion.EstadoPago.PENDIENTE;
+        return switch (estadoMP.toLowerCase()) {
             case "approved" -> PagoAdministracion.EstadoPago.APROBADO;
             case "rejected", "cancelled", "failed" -> PagoAdministracion.EstadoPago.RECHAZADO;
             default -> PagoAdministracion.EstadoPago.PENDIENTE;
         };
     }
 
-    /** PSE en BD = pago en línea (Mercado Pago); la API expone MERCADO_PAGO para el cliente. */
     private String metodoPagoParaApi(PagoAdministracion.MetodoPago metodoPago) {
-        if (metodoPago == null) {
-            return null;
-        }
+        if (metodoPago == null) return null;
         return metodoPago == PagoAdministracion.MetodoPago.PSE ? "MERCADO_PAGO" : metodoPago.name();
     }
 
     private String mensajeEstado(PagoAdministracion.EstadoPago estadoPago) {
+        if (estadoPago == null) return "Estado desconocido";
         return switch (estadoPago) {
             case APROBADO -> "Pago realizado con exito";
             case RECHAZADO -> "El pago fue rechazado";
             case PENDIENTE -> "El pago se encuentra pendiente";
         };
-    }
-
-    private Map<String, Object> mapearResumenPago(PagoAdministracion pago) {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("id", pago.getId());
-        item.put("monto", pago.getMonto());
-        item.put("fechaPago", pago.getFechaPago() != null ? pago.getFechaPago().toString() : null);
-        item.put("metodoPago", metodoPagoParaApi(pago.getMetodoPago()));
-        item.put("estadoPago", pago.getEstadoPago() != null ? pago.getEstadoPago().name() : null);
-        item.put("concepto", pago.getConcepto());
-        item.put("periodo", pago.getPeriodo());
-        item.put("referenciaExterna", pago.getReferenciaExterna());
-        item.put("mercadoPagoPreferenceId", pago.getMercadoPagoPreferenceId());
-        item.put("mercadoPagoPaymentId", pago.getMercadoPagoPaymentId());
-        item.put("checkoutUrl", pago.getCheckoutUrl());
-        agregarDatosVencimientoPago(item, pago);
-        if (pago.getUsuario() != null) {
-            item.put("usuarioId", pago.getUsuario().getId());
-            item.put("usuarioNombre", pago.getUsuario().getNombre());
-            item.put("usuarioUsername", pago.getUsuario().getUsuario());
-        }
-        return item;
-    }
-
-    private void agregarDatosVencimientoPago(Map<String, Object> item, PagoAdministracion pago) {
-        if (pago.getPeriodo() == null || pago.getPeriodo().isBlank()) {
-            return;
-        }
-        try {
-            LocalDate fechaLimite = YearMonth.parse(pago.getPeriodo()).atDay(DIA_LIMITE_PAGO_ADMINISTRACION);
-            item.put("diaLimitePago", DIA_LIMITE_PAGO_ADMINISTRACION);
-            item.put("fechaLimitePago", fechaLimite.toString());
-            item.put("pagoExtemporaneo", pago.getFechaPago() != null && pago.getFechaPago().toLocalDate().isAfter(fechaLimite));
-        } catch (Exception ignored) {
-            // Mantiene compatibilidad con pagos antiguos que puedan tener periodo no ISO yyyy-MM.
-        }
-    }
-
-    private Map<String, Object> mapearEstadoPagoResidente(
-            Usuario residente,
-            List<PagoAdministracion> todosLosPagos,
-            YearMonth periodoActual,
-            LocalDate fechaLimite,
-            LocalDate hoy
-    ) {
-        List<PagoAdministracion> pagosResidente = todosLosPagos.stream()
-                .filter(pago -> pago.getUsuario() != null && residente.getId().equals(pago.getUsuario().getId()))
-                .toList();
-        List<PagoAdministracion> pagosPeriodo = pagosResidente.stream()
-                .filter(pago -> periodoActual.toString().equals(pago.getPeriodo()))
-                .toList();
-        Optional<PagoAdministracion> pagoAprobadoPeriodo = pagosPeriodo.stream()
-                .filter(pago -> pago.getEstadoPago() == PagoAdministracion.EstadoPago.APROBADO)
-                .findFirst();
-        Optional<PagoAdministracion> ultimoPagoPeriodo = pagosPeriodo.stream().findFirst();
-
-        String estadoAdministracion = calcularEstadoAdministracion(pagoAprobadoPeriodo, fechaLimite, hoy);
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("usuarioId", residente.getId());
-        item.put("usuarioNombre", residente.getNombre());
-        item.put("usuarioUsername", residente.getUsuario());
-        item.put("torre", residente.getTorre());
-        item.put("apartamento", residente.getApartamento());
-        item.put("periodoActual", periodoActual.toString());
-        item.put("diaLimitePago", DIA_LIMITE_PAGO_ADMINISTRACION);
-        item.put("fechaLimitePago", fechaLimite.toString());
-        item.put("estadoAdministracion", estadoAdministracion);
-        item.put("estaAlDia", "AL_DIA".equals(estadoAdministracion));
-        item.put("estaEnMora", "EN_MORA".equals(estadoAdministracion));
-        item.put("diasMora", calcularDiasMora(estadoAdministracion, fechaLimite, hoy));
-        item.put("pagoPeriodoActual", pagoAprobadoPeriodo.or(() -> ultimoPagoPeriodo)
-                .map(this::mapearResumenPago)
-                .orElse(null));
-        item.put("historialPagos", pagosResidente.stream()
-                .map(this::mapearResumenPago)
-                .toList());
-        return item;
-    }
-
-    private String calcularEstadoAdministracion(
-            Optional<PagoAdministracion> pagoAprobadoPeriodo,
-            LocalDate fechaLimite,
-            LocalDate hoy
-    ) {
-        if (pagoAprobadoPeriodo.isPresent()) {
-            LocalDate fechaPago = pagoAprobadoPeriodo.get().getFechaPago() != null
-                    ? pagoAprobadoPeriodo.get().getFechaPago().toLocalDate()
-                    : hoy;
-            return fechaPago.isAfter(fechaLimite) ? "PAGADO_EN_MORA" : "AL_DIA";
-        }
-        return hoy.isAfter(fechaLimite) ? "EN_MORA" : "PENDIENTE_EN_PLAZO";
-    }
-
-    private long calcularDiasMora(String estadoAdministracion, LocalDate fechaLimite, LocalDate hoy) {
-        if (!"EN_MORA".equals(estadoAdministracion)) {
-            return 0;
-        }
-        return Math.max(0, ChronoUnit.DAYS.between(fechaLimite, hoy));
     }
 }
