@@ -179,14 +179,15 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         String referenciaExterna = pago.getReferenciaExterna();
 
         String urlBackend = asegurarUrlHttpsParaMercadoPago(resolverUrlBackend());
-        String urlRetorno = asegurarUrlHttpsParaMercadoPago(resolverUrlRetorno(payload));
+        // back_urls siempre al backend (pagina estatica). Evita bucles si el front reenvia a MP.
+        String urlRetornoCheckout = urlBackend;
         log.info("Checkout MP: pagoId={}, ref={}, webhook={}, retorno={}",
-                pago.getId(), referenciaExterna, urlBackend + "/api/pagos/mercadopago/webhook", urlRetorno);
+                pago.getId(), referenciaExterna, urlBackend + "/api/pagos/mercadopago/webhook", urlRetornoCheckout);
 
         String refCodificada = URLEncoder.encode(referenciaExterna, StandardCharsets.UTF_8);
-        String successUrl = urlRetorno + "/pagos/resultado?ref=" + refCodificada + "&estado=aprobado";
-        String pendingUrl = urlRetorno + "/pagos/resultado?ref=" + refCodificada + "&estado=pendiente";
-        String failureUrl = urlRetorno + "/pagos/resultado?ref=" + refCodificada + "&estado=rechazado";
+        String successUrl = urlRetornoCheckout + "/pagos/resultado?ref=" + refCodificada + "&estado=aprobado";
+        String pendingUrl = urlRetornoCheckout + "/pagos/resultado?ref=" + refCodificada + "&estado=pendiente";
+        String failureUrl = urlRetornoCheckout + "/pagos/resultado?ref=" + refCodificada + "&estado=rechazado";
 
         // 2) Crear preferencia en Mercado Pago con la referencia ya guardada.
         Map<String, Object> preferencePayload = new LinkedHashMap<>();
@@ -204,11 +205,13 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         backUrls.put("pending", pendingUrl);
         backUrls.put("failure", failureUrl);
         preferencePayload.put("back_urls", backUrls);
-        preferencePayload.put("auto_return", "approved");
+        // Sin auto_return: evita bucle "demasiadas redirecciones" en sandbox/WebView.
 
-        Map<String, Object> payer = construirPayerMercadoPago(usuario);
-        if (payer != null) {
-            preferencePayload.put("payer", payer);
+        if (!esModoSandbox()) {
+            Map<String, Object> payer = construirPayerMercadoPago(usuario);
+            if (payer != null) {
+                preferencePayload.put("payer", payer);
+            }
         }
 
         Map<String, Object> metadata = new LinkedHashMap<>();
@@ -252,17 +255,18 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         Map<String, Object> instrucciones = new LinkedHashMap<>();
         instrucciones.put("sandbox", esModoSandbox());
         instrucciones.put("emailCompradorObligatorio", resolverEmailPayerSandbox());
-        instrucciones.put("tarjetaDebitoColombia", Map.of(
-                "numero", "4915 1120 5524 6507",
+        instrucciones.put("tarjetaPruebaRecomendada", Map.of(
+                "tipo", "Credito Mastercard (sandbox)",
+                "numero", "5031 7557 3453 0604",
                 "cvv", "123",
                 "vencimiento", "11/30",
                 "titularAprobado", "APRO",
                 "documento", "123456789"
         ));
         instrucciones.put("notas", List.of(
-                "En sandbox usa el email de comprador de prueba indicado arriba (no tu correo personal).",
-                "Titular de la tarjeta: APRO para pago aprobado.",
-                "Tipo de tarjeta en el checkout: débito Visa.",
+                "Tarjeta recomendada: 5031 7557 3453 0604, titular APRO, vence 11/30, CVV 123.",
+                "Si ves 'demasiadas redirecciones': borra cookies de mercadopago.com o usa Chrome incognito.",
+                "Abre el checkout en navegador externo, no dentro de la app si se queda cargando.",
                 "Credenciales en Render: MERCADOPAGO_ACCESS_TOKEN con valor TEST-... (Access Token, no Public Key)."
         ));
         return instrucciones;
@@ -559,7 +563,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         salida.put("usuarioId", usuario.getId());
         salida.put("usuarioUsername", usuario.getUsuario());
         salida.put("mensaje", esModoSandbox()
-                ? "Pago creado. En Mercado Pago usa el email de prueba y tarjeta débito Colombia (ver instruccionesPagoPrueba)."
+                ? "Pago creado. Usa tarjeta 5031 7557 3453 0604, titular APRO (ver instruccionesPagoPrueba)."
                 : "Pago creado. Redirige al usuario a Mercado Pago.");
         return salida;
     }
