@@ -64,6 +64,12 @@ public class NotificacionController {
         return notificacionService.listarUsuariosParaNotificaciones(search);
     }
 
+    @GetMapping("/recibos/mis-recibos")
+    @PreAuthorize("hasRole('RESIDENTE')")
+    public List<Map<String, Object>> misRecibos(Authentication authentication) {
+        return notificacionService.obtenerRecibosResidente(authentication.getName());
+    }
+
     @GetMapping("/{id}")
     public Optional<Notificacion> obtenerPorId(@PathVariable Long id) {
         return notificacionService.obtenerPorId(id);

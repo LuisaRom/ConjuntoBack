@@ -17,6 +17,7 @@ public interface NotificacionService {
     Notificacion actualizar(Long id, Notificacion notificacion);
     List<Map<String, Object>> obtenerNovedades(String search, String usernameAutenticado);
     List<Map<String, Object>> obtenerHistorialChat(String search, String usernameAutenticado);
+    List<Map<String, Object>> obtenerRecibosResidente(String usernameAutenticado);
     Notificacion enviarMensajeChat(Map<String, Object> payload, String usernameAutenticado);
     List<Map<String, Object>> listarUsuariosParaNotificaciones(String search);
     List<Notificacion> enviarNotificacionRecibo(Map<String, Object> payload);

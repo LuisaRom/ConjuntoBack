@@ -18,13 +18,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -39,10 +39,10 @@ public class NotificacionServiceImpl implements NotificacionService {
 
     @Autowired
     private NotificacionRepository notificacionRepository;
-    
+
     @Autowired
     private UsuarioRepository usuarioRepository;
-    
+
     @Autowired
     private HistorialNotificacionRepository historialNotificacionRepository;
 
@@ -69,37 +69,34 @@ public class NotificacionServiceImpl implements NotificacionService {
     @Override
     public Notificacion guardar(Notificacion notificacion) {
         // Siempre cargar el usuario completo desde la base de datos usando el ID
-        // Esto asegura que el usuario tenga todos los campos correctos, incluyendo el rol
         if (notificacion.getUsuario() != null && notificacion.getUsuario().getId() != null) {
             Long usuarioId = notificacion.getUsuario().getId();
             Optional<Usuario> usuarioOpt = usuarioRepository.findById(usuarioId);
             if (usuarioOpt.isPresent()) {
-                // Usar el usuario completo desde la base de datos
                 Usuario usuarioCompleto = usuarioOpt.get();
                 notificacion.setUsuario(usuarioCompleto);
-                log.debug("Usuario cargado para notificación id={}", usuarioCompleto.getId());
+                log.debug("Usuario cargado para notificacion id={}", usuarioCompleto.getId());
             } else {
                 throw new IllegalArgumentException("Usuario no encontrado con id: " + usuarioId);
             }
         } else if (notificacion.getUsuario() == null) {
-            throw new IllegalArgumentException("La notificación debe tener un usuario asignado");
+            throw new IllegalArgumentException("La notificacion debe tener un usuario asignado");
         }
-        
-        // Si no hay fecha, asignar la fecha actual
+
         if (notificacion.getFechaEnvio() == null) {
-            notificacion.setFechaEnvio(java.time.LocalDateTime.now());
+            notificacion.setFechaEnvio(LocalDateTime.now());
         }
         validarMultimediaOpcional(notificacion.getImagenUrl(), "imagenUrl");
         validarMultimediaOpcional(notificacion.getVideoUrl(), "videoUrl");
-        
+
         try {
             return notificacionRepository.save(notificacion);
         } catch (DataAccessException ex) {
             String causa = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
-            log.error("Error SQL al guardar notificación (usuarioId={}): {}", 
+            log.error("Error SQL al guardar notificacion (usuarioId={}): {}",
                     notificacion.getUsuario() != null ? notificacion.getUsuario().getId() : null, causa, ex);
             throw new IllegalStateException(
-                    "No se pudo guardar la publicación en la base de datos. Verifica columnas imagen_url, video_url y usuarios_etiquetados."
+                    "No se pudo guardar la publicacion en la base de datos. Verifica columnas imagen_url, video_url y usuarios_etiquetados."
             );
         }
     }
@@ -138,7 +135,7 @@ public class NotificacionServiceImpl implements NotificacionService {
                     existing.setUsuario(notificacion.getUsuario());
                     return notificacionRepository.save(existing);
                 })
-                .orElseThrow(() -> new RuntimeException("Notificaci?n no encontrada con id: " + id));
+                .orElseThrow(() -> new RuntimeException("Notificacion no encontrada con id: " + id));
     }
 
     @Override
@@ -209,7 +206,7 @@ public class NotificacionServiceImpl implements NotificacionService {
         try {
             destinatarioId = Long.parseLong(destinatarioIdObj.toString());
         } catch (NumberFormatException ex) {
-            throw new IllegalArgumentException("destinatarioId inv?lido");
+            throw new IllegalArgumentException("destinatarioId invalido");
         }
         Usuario destinatario = usuarioRepository.findById(destinatarioId)
                 .orElseThrow(() -> new IllegalArgumentException("Destinatario no encontrado"));
@@ -250,6 +247,20 @@ public class NotificacionServiceImpl implements NotificacionService {
     }
 
     @Override
+    public List<Map<String, Object>> obtenerRecibosResidente(String usernameAutenticado) {
+        archivarRecibosVencidosSeguro();
+        Usuario residente = usuarioRepository.findByUsuario(usernameAutenticado)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
+        return notificacionRepository.findAll().stream()
+                .filter(this::esNotificacionRecibo)
+                .filter(n -> n.getUsuario() != null && residente.getId().equals(n.getUsuario().getId()))
+                .sorted(Comparator.comparing(Notificacion::getFechaEnvio,
+                        Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
+                .map(this::mapearNotificacionDetalle)
+                .toList();
+    }
+
+    @Override
     public List<Notificacion> enviarNotificacionRecibo(Map<String, Object> payload) {
         String mensaje = extraerTexto(payload, "mensaje");
         if (mensaje == null || mensaje.isBlank()) {
@@ -257,7 +268,10 @@ public class NotificacionServiceImpl implements NotificacionService {
         }
         String tipoEnvio = extraerTexto(payload, "tipoEnvio");
         if (tipoEnvio == null || tipoEnvio.isBlank()) {
-            tipoEnvio = "todos";
+            boolean traeDestinatario = payload.get("destinatarioId") != null
+                    || payload.get("usuarioId") != null
+                    || payload.get("usuarioIds") != null;
+            tipoEnvio = traeDestinatario ? "individual" : "todos";
         }
         List<Usuario> destinatarios = resolverDestinatariosRecibo(tipoEnvio, payload);
         String imagenUrl = extraerTexto(payload, "imagenUrl");
@@ -304,7 +318,7 @@ public class NotificacionServiceImpl implements NotificacionService {
         Notificacion guardada = guardar(notificacion, usernameAutenticado);
         Long id = guardada.getId();
         if (id == null) {
-            throw new IllegalStateException("No se pudo crear la publicación");
+            throw new IllegalStateException("No se pudo crear la publicacion");
         }
 
         MultipartFile archivoImagen = imagen != null && !imagen.isEmpty() ? imagen : null;
@@ -333,7 +347,7 @@ public class NotificacionServiceImpl implements NotificacionService {
     public Resource obtenerVideo(Long id) {
         return obtenerRecursoNotificacion(id, "video");
     }
-    
+
     private void archivarRecibosVencidosSeguro() {
         try {
             archivarRecibosVencidos();
@@ -346,7 +360,7 @@ public class NotificacionServiceImpl implements NotificacionService {
         List<Notificacion> todas = notificacionRepository.findAll();
         LocalDateTime limite = LocalDateTime.now().minusDays(20);
         List<Notificacion> paraEliminar = new ArrayList<>();
-        
+
         for (Notificacion n : todas) {
             if (!esNotificacionRecibo(n)) {
                 continue;
@@ -354,7 +368,7 @@ public class NotificacionServiceImpl implements NotificacionService {
             if (n.getFechaEnvio() == null || !n.getFechaEnvio().isBefore(limite)) {
                 continue;
             }
-            
+
             boolean yaArchivada = historialNotificacionRepository.findByNotificacionOriginalId(n.getId()).isPresent();
             if (!yaArchivada) {
                 HistorialNotificacion h = new HistorialNotificacion();
@@ -370,12 +384,12 @@ public class NotificacionServiceImpl implements NotificacionService {
             }
             paraEliminar.add(n);
         }
-        
+
         if (!paraEliminar.isEmpty()) {
             notificacionRepository.deleteAll(paraEliminar);
         }
     }
-    
+
     private boolean esNotificacionRecibo(Notificacion n) {
         if (n == null || n.getMensaje() == null) {
             return false;
@@ -387,7 +401,9 @@ public class NotificacionServiceImpl implements NotificacionService {
     }
 
     private boolean esNotificacionPaquete(Notificacion n) {
-        if (n == null || n.getMensaje() == null) return false;
+        if (n == null || n.getMensaje() == null) {
+            return false;
+        }
         String m = n.getMensaje().toLowerCase();
         return m.contains("tienes un paquete");
     }
@@ -488,10 +504,12 @@ public class NotificacionServiceImpl implements NotificacionService {
         if ("varios".equals(tipo) || "multiple".equals(tipo) || "multiples".equals(tipo)) {
             return resolverResidentesPorIds(payload.get("usuarioIds"));
         }
-        Object usuarioIdObj = payload.get("usuarioIds") != null ? payload.get("usuarioIds") : payload.get("usuarioId");
         if (!"individual".equals(tipo)) {
-            throw new IllegalArgumentException("tipoEnvio inv?lido. Usa 'todos' o 'individual'");
+            throw new IllegalArgumentException("tipoEnvio invalido. Usa 'todos' o 'individual'");
         }
+        Object usuarioIdObj = payload.get("usuarioIds") != null ? payload.get("usuarioIds")
+                : payload.get("usuarioId") != null ? payload.get("usuarioId")
+                : payload.get("destinatarioId");
         return resolverResidentesPorIds(usuarioIdObj);
     }
 
@@ -642,13 +660,13 @@ public class NotificacionServiceImpl implements NotificacionService {
             Path destino = carpeta.resolve(tipo + extension);
             Files.copy(archivo.getInputStream(), destino, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
-            throw new IllegalStateException("No se pudo guardar el archivo de la publicación");
+            throw new IllegalStateException("No se pudo guardar el archivo de la publicacion");
         }
     }
 
     private Resource obtenerRecursoNotificacion(Long id, String tipo) {
         notificacionRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Notificación no encontrada"));
+                .orElseThrow(() -> new IllegalArgumentException("Notificacion no encontrada"));
 
         Path carpeta = resolverDirectorioUploads(id);
         if (!Files.exists(carpeta)) {
@@ -656,7 +674,7 @@ public class NotificacionServiceImpl implements NotificacionService {
             if (Files.exists(carpetaLegacy)) {
                 carpeta = carpetaLegacy;
             } else {
-                throw new IllegalArgumentException("La publicación no tiene " + tipo);
+                throw new IllegalArgumentException("La publicacion no tiene " + tipo);
             }
         }
 
@@ -664,14 +682,14 @@ public class NotificacionServiceImpl implements NotificacionService {
             Path encontrado = Files.list(carpeta)
                     .filter(path -> path.getFileName().toString().startsWith(tipo))
                     .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException("La publicación no tiene " + tipo));
+                    .orElseThrow(() -> new IllegalArgumentException("La publicacion no tiene " + tipo));
             Resource resource = new UrlResource(encontrado.toUri());
             if (!resource.exists() || !resource.isReadable()) {
                 throw new IllegalArgumentException("Archivo no disponible");
             }
             return resource;
         } catch (IOException e) {
-            throw new IllegalStateException("No se pudo leer el archivo de la publicación");
+            throw new IllegalStateException("No se pudo leer el archivo de la publicacion");
         }
     }
 
@@ -681,22 +699,22 @@ public class NotificacionServiceImpl implements NotificacionService {
         }
         String valor = url.trim();
         if (!(valor.startsWith("http://") || valor.startsWith("https://"))) {
-            throw new IllegalArgumentException(campo + " inv?lida: debe ser URL p?blica http(s)");
+            throw new IllegalArgumentException(campo + " invalida: debe ser URL publica http(s)");
         }
         try {
             URI uri = URI.create(valor);
             if (uri.getHost() == null || uri.getHost().isBlank()) {
-                throw new IllegalArgumentException(campo + " inv?lida: host no v?lido");
+                throw new IllegalArgumentException(campo + " invalida: host no valido");
             }
             String host = uri.getHost().toLowerCase();
             if ("localhost".equals(host) || host.startsWith("127.") || "0.0.0.0".equals(host)) {
-                throw new IllegalArgumentException(campo + " inv?lida: no se permiten URLs locales");
+                throw new IllegalArgumentException(campo + " invalida: no se permiten URLs locales");
             }
         } catch (IllegalArgumentException ex) {
-            if (ex.getMessage() != null && ex.getMessage().contains("inv?lida")) {
+            if (ex.getMessage() != null && ex.getMessage().contains("invalida")) {
                 throw ex;
             }
-            throw new IllegalArgumentException(campo + " inv?lida: formato no reconocido");
+            throw new IllegalArgumentException(campo + " invalida: formato no reconocido");
         }
     }
 }

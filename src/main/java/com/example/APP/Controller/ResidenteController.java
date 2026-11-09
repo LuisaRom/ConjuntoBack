@@ -9,12 +9,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.text.Normalizer;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.text.Normalizer;
 
 @RestController
 @RequestMapping("/api/residentes")
@@ -49,7 +49,8 @@ public class ResidenteController {
     }
 
     @PostMapping
-    public List<Map<String, Object>> obtenerResidentesPost(@RequestParam(name = "search", required = false) String search) {
+    public List<Map<String, Object>> obtenerResidentesPost(
+            @RequestParam(name = "search", required = false) String search) {
         return obtenerResidentes(search, null, null);
     }
 
