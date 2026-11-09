@@ -112,8 +112,9 @@ public class NotificacionServiceImpl implements NotificacionService {
         Usuario usuarioAutenticado = usuarioRepository.findByUsuario(usernameAutenticado)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario autenticado no encontrado"));
         if (usuarioAutenticado.getRol() == Usuario.Rol.CELADOR) {
-            if (!esNotificacionRecibo(notificacion)) {
-                throw new IllegalArgumentException("El celador solo puede enviar notificaciones de recibos");
+            if (!esNotificacionRecibo(notificacion) && !esNotificacionPaquete(notificacion)) {
+                throw new IllegalArgumentException(
+                        "El celador solo puede enviar notificaciones de recibos o paquetes");
             }
             Usuario destinatario = resolverResidenteDesdeNotificacion(notificacion);
             notificacion.setUsuario(destinatario);
@@ -380,6 +381,12 @@ public class NotificacionServiceImpl implements NotificacionService {
         boolean tieneRecibo = mensaje.contains("recibo");
         boolean tieneTipo = mensaje.contains("enel") || mensaje.contains("vanti") || mensaje.contains("epz");
         return tieneRecibo && tieneTipo;
+    }
+
+    private boolean esNotificacionPaquete(Notificacion n) {
+        if (n == null || n.getMensaje() == null) return false;
+        String m = n.getMensaje().toLowerCase();
+        return m.contains("paquete") && m.contains("portería");
     }
 
     private boolean esMensajeChat(Notificacion notificacion) {
