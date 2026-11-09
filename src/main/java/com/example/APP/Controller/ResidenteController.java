@@ -28,11 +28,18 @@ public class ResidenteController {
     }
 
     @GetMapping
-    public List<Map<String, Object>> obtenerResidentes(@RequestParam(name = "search", required = false) String search) {
+    public List<Map<String, Object>> obtenerResidentes(
+            @RequestParam(name = "search", required = false) String search,
+            @RequestParam(name = "torre", required = false) String torre,
+            @RequestParam(name = "apartamento", required = false) String apartamento) {
         String filtro = normalizarTexto(search);
-        return usuarioService.obtenerResidentes().stream()
+        String torreBuscada = normalizarTexto(torre);
+        String aptoBuscado = normalizarTexto(apartamento);
+        return usuarioService.obtenerResidentes().stream()   // solo rol RESIDENTE
                 .filter(u -> u != null)
                 .filter(u -> filtro.isBlank() || coincideFiltroResidente(u, filtro))
+                .filter(u -> torreBuscada.isBlank() || normalizarTexto(u.getTorre()).equals(torreBuscada))
+                .filter(u -> aptoBuscado.isBlank() || normalizarTexto(u.getApartamento()).equals(aptoBuscado))
                 .sorted(Comparator
                         .comparing(Usuario::getTorre, Comparator.nullsLast(String::compareToIgnoreCase))
                         .thenComparing(Usuario::getApartamento, Comparator.nullsLast(String::compareToIgnoreCase))
@@ -43,7 +50,7 @@ public class ResidenteController {
 
     @PostMapping
     public List<Map<String, Object>> obtenerResidentesPost(@RequestParam(name = "search", required = false) String search) {
-        return obtenerResidentes(search);
+        return obtenerResidentes(search, null, null);
     }
 
     private Map<String, Object> mapearResidente(Usuario usuario) {
