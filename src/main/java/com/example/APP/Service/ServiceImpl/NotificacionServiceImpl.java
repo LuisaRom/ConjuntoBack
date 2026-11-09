@@ -164,7 +164,10 @@ public class NotificacionServiceImpl implements NotificacionService {
     }
 
     private boolean esPublicacionNovedad(Notificacion notificacion) {
-        return notificacion != null && !esMensajeChat(notificacion) && !esNotificacionRecibo(notificacion);
+        return notificacion != null
+                && !esMensajeChat(notificacion)
+                && !esNotificacionRecibo(notificacion)
+                && !esNotificacionPaquete(notificacion);
     }
 
     @Override
@@ -386,7 +389,7 @@ public class NotificacionServiceImpl implements NotificacionService {
     private boolean esNotificacionPaquete(Notificacion n) {
         if (n == null || n.getMensaje() == null) return false;
         String m = n.getMensaje().toLowerCase();
-        return m.contains("paquete") && m.contains("portería");
+        return m.contains("tienes un paquete");
     }
 
     private boolean esMensajeChat(Notificacion notificacion) {
