@@ -235,8 +235,8 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         item.put("unit_price", precioEntero);
         preferencePayload.put("items", List.of(item));
 
-        // Payer — se envía siempre (sandbox y producción)
-        // En sandbox Mercado Pago usa sus propios datos de prueba, el payer es solo referencia
+        // Payer — solo en producción. En modo prueba (sandbox) NO se envía pagador:
+        // lo define quien paga en el checkout (cuenta compradora de prueba o tarjeta).
         Map<String, Object> payer = construirPayerMercadoPago(usuario);
         if (payer != null) {
             preferencePayload.put("payer", payer);
@@ -252,7 +252,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         backUrls.put("pending", pendingUrl);
         backUrls.put("failure", failureUrl);
         preferencePayload.put("back_urls", backUrls);
-        // auto_return desactivado para evitar bucles en sandbox/WebView
+        // Mercado Pago redirige solo a back_urls.success cuando el pago es aprobado
         preferencePayload.put("auto_return", "approved");
 
         // Cuotas
@@ -286,6 +286,10 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         }
 
         String initPoint = resolverInitPointCheckout(sandboxInitPoint, initPointNormal);
+
+        // Solo para pruebas: deja el link en los logs de Render para poder copiarlo.
+        // (Puedes borrar esta línea cuando termines de probar.)
+        log.info("CHECKOUT_URL pagoId={} -> {}", pago.getId(), initPoint);
 
         // 5) Actualizar registro en BD con datos de Mercado Pago
         pago.setMercadoPagoPreferenceId(body.get("id").toString());
@@ -647,8 +651,13 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
     // -------------------------------------------------------------------------
 
     private Map<String, Object> construirPayerMercadoPago(Usuario usuario) {
-        // En sandbox MP ignora el email del payer y usa sus propios datos de prueba
-        // pero igual se envía para que la preferencia sea válida
+        // En modo prueba NO se envía pagador: un correo inventado como
+        // test_payer_X@testuser.com hace que Mercado Pago lo trate como un comprador
+        // de prueba inexistente y rechace el pago ("una de las partes es de prueba").
+        if (esModoSandbox()) {
+            return null;
+        }
+
         String email = resolverEmailPayer(usuario);
         if (email == null || email.isBlank()) return null;
 
@@ -675,8 +684,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
 
     private String resolverEmailPayer(Usuario usuario) {
         if (esModoSandbox()) {
-            // En sandbox se usa un email genérico de prueba
-            // MP no valida el correo, solo necesita que tenga formato válido
+            // No se usa: en modo prueba no se envía pagador (ver construirPayerMercadoPago)
             return "test_payer_" + usuario.getId() + "@testuser.com";
         }
         // En producción usar el documento si tiene formato de email
