@@ -144,15 +144,15 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         Map<String, Object> instrucciones = new LinkedHashMap<>();
         instrucciones.put("sandbox", esModoSandbox());
         instrucciones.put("tarjetaPruebaRecomendada", Map.of(
-                "tipo", "Credito Mastercard sandbox",
-                "numero", "5031 7557 3453 0604",
+                "tipo", "Credito Mastercard sandbox Colombia",
+                "numero", "5254 1336 7440 3564",
                 "cvv", "123",
                 "vencimiento", "11/30",
                 "titularAprobado", "APRO",
                 "documento", "123456789"
         ));
         instrucciones.put("notas", List.of(
-                "Tarjeta: 5031 7557 3453 0604, titular APRO, vence 11/30, CVV 123.",
+                "Tarjeta: 5254 1336 7440 3564, titular APRO, vence 11/30, CVV 123, documento CC 123456789.",
                 "Abre el checkout en navegador externo, no dentro de la app."
         ));
         return instrucciones;
@@ -726,7 +726,7 @@ public class PagoAdministracionServiceImpl implements PagoAdministracionService 
         if (esModoSandbox()) {
             salida.put("mensaje",
                     "Pago creado en modo prueba. "
-                            + "Usa tarjeta: 5031 7557 3453 0604, titular: APRO, vence: 11/30, CVV: 123.");
+                            + "Usa tarjeta: 5254 1336 7440 3564, titular: APRO, vence: 11/30, CVV: 123, documento CC: 123456789.");
         } else {
             salida.put("mensaje", "Pago creado. Redirige al usuario a Mercado Pago.");
         }
