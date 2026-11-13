@@ -6,6 +6,7 @@ import com.example.APP.Model.Usuario;
 import com.example.APP.Repository.QuejaRepository;
 import com.example.APP.Repository.UsuarioRepository;
 import com.example.APP.Service.NotificacionService;
+import com.example.APP.Service.IaGestionService;
 import com.example.APP.Service.QuejaService;
 import org.springframework.beans.BeanWrapperImpl;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +37,9 @@ public class QuejaServiceImpl implements QuejaService {
     
     @Autowired
     private UsuarioRepository usuarioRepository;
+
+    @Autowired
+    private IaGestionService iaGestionService;
 
     @Override
     public List<Queja> obtenerTodos() {
@@ -183,7 +187,9 @@ public class QuejaServiceImpl implements QuejaService {
         queja.setFechaCreacion(fecha);
         queja.setEstado(Queja.Estado.PENDIENTE);
         
-        return quejaRepository.save(queja);
+        Queja guardada = quejaRepository.save(queja);
+        iaGestionService.analizarQuejaAsync(guardada.getId());
+        return guardada;
     }
     
     @Override

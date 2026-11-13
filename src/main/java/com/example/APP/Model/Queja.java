@@ -27,6 +27,20 @@ public class Queja{
     @JoinColumn(name = "usuario_id")
     private Usuario usuario;
 
+    @Column(length = 20)
+    private String prioridadIA;
+
+    @Column(length = 40)
+    private String categoriaIA;
+
+    @Column(columnDefinition = "TEXT")
+    private String resumenIA;
+
+    @Column(columnDefinition = "TEXT")
+    private String respuestaSugeridaIA;
+
+    private LocalDateTime fechaAnalisisIA;
+
     public enum Estado {
         PENDIENTE, EN_PROCESO, RESUELTO
     }

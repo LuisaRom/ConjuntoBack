@@ -51,6 +51,12 @@ public class AppApplication {
 		setPropertyFromDotenv(dotenv, "MERCADOPAGO_TEST_PAYER_EMAIL", "mercadopago.test-payer-email");
 		setPropertyFromDotenv(dotenv, "FRONTEND_BASE_URL", "app.frontend.base-url");
 		setPropertyFromDotenv(dotenv, "BACKEND_BASE_URL", "app.backend.base-url");
+		setPropertyFromDotenv(dotenv, "IA_PROVEEDOR", "ia.proveedor");
+		setPropertyFromDotenv(dotenv, "IA_API_KEY", "ia.api-key");
+		setPropertyFromDotenv(dotenv, "IA_MODELO", "ia.modelo");
+		setPropertyFromDotenv(dotenv, "IA_BASE_URL", "ia.base-url");
+		setPropertyFromDotenv(dotenv, "IA_NOMBRE_CONJUNTO", "ia.nombre-conjunto");
+		setPropertyFromDotenv(dotenv, "IA_NOMBRE_ASISTENTE", "ia.nombre-asistente");
 
 		// Fallback para Hibernate (evita error "Unable to determine Dialect" durante debug)
 		if (System.getProperty("spring.jpa.database-platform") == null) {

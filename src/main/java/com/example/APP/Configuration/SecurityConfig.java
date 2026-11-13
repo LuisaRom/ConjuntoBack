@@ -97,6 +97,10 @@ public class SecurityConfig {
                                 "/api/pagos/residente/pagos",
                                 "/api/pagos/sandbox-instrucciones"
                         ).hasRole("RESIDENTE")
+                        .requestMatchers("/api/ia/conocimiento/**", "/api/ia/gestion/**", "/api/ia/feedback/**", "/api/ia/comunicados/**")
+                        .hasRole("ADMINISTRADOR")
+                        .requestMatchers(HttpMethod.POST, "/api/ia/quejas/*/analizar").hasAnyRole("ADMINISTRADOR", "CELADOR")
+                        .requestMatchers("/api/ia/**").hasAnyRole("ADMINISTRADOR", "CELADOR", "RESIDENTE")
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )
