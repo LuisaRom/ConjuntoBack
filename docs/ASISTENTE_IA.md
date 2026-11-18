@@ -24,6 +24,22 @@ El modelo no ejecuta SQL. Usa herramientas definidas en `IA/HerramientasIA.java`
 - Celador: todo lo operativo (paquetes, accesos, reservas, quejas, mascotas, residentes), sin pagos.
 - Administrador: todo, incluidos pagos, mora y resumen del conjunto.
 
+## Modo básico (sin clave de IA)
+
+Si `IA_API_KEY` no está configurada, o si el proveedor falla, responde `IA/AsistenteBasicoIA.java`. Este motor entiende la pregunta en lenguaje natural (incluye fechas como hoy, mañana, el sábado o el mes pasado, torres, apartamentos y placas), consulta los mismos datos filtrados por rol y redacta una respuesta con totales, porcentajes, alertas y una recomendación. Cubre: mora y recaudo, estado de pago del residente, paquetes, quejas, reservas y disponibilidad, accesos, mascotas, vehículos y parqueaderos, búsqueda de residentes, resumen del conjunto y normas de la base de conocimiento.
+
+Con una clave configurada el modelo de IA da respuestas más flexibles para preguntas abiertas.
+
+## Vehículos y parqueaderos
+
+| Endpoint | Rol |
+|---|---|
+| `GET/POST /api/vehiculos-residentes/mis-vehiculos`, `DELETE /api/vehiculos-residentes/mis-vehiculos/{id}` | Cualquier usuario, solo sus vehículos |
+| `GET /api/vehiculos-residentes`, `GET /api/vehiculos-residentes/resumen` | Administrador y celador |
+| `PUT /api/vehiculos-residentes/{id}/parqueadero` `{ "parqueadero": "P-12" }` | Administrador (vacío para liberar) |
+
+La placa se valida (ABC123 para carros, ABC12D para motos) y no puede repetirse; un parqueadero no puede asignarse a dos vehículos. Al asignarlo, el residente recibe una notificación.
+
 ## Cómo aprende (auto-entrenamiento)
 
 No se reentrena el modelo; el asistente acumula conocimiento propio del conjunto en la tabla `conocimiento_ia` y lo recupera en cada pregunta:
