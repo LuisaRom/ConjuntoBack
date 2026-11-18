@@ -36,6 +36,7 @@ public class HerramientasIA {
     private final AccesoVehicularRepository accesoVehicularRepository;
     private final AccesoPeatonalRepository accesoPeatonalRepository;
     private final MascotaRepository mascotaRepository;
+    private final VehiculoResidenteRepository vehiculoRepository;
     private final ConocimientoIAService conocimientoService;
     private final ObjectMapper json;
 
@@ -44,7 +45,7 @@ public class HerramientasIA {
                           ReservaZonaComunRepository reservaRepository,
                           AccesoVehicularRepository accesoVehicularRepository,
                           AccesoPeatonalRepository accesoPeatonalRepository, MascotaRepository mascotaRepository,
-                          ConocimientoIAService conocimientoService) {
+                          VehiculoResidenteRepository vehiculoRepository, ConocimientoIAService conocimientoService) {
         this.usuarioRepository = usuarioRepository;
         this.quejaRepository = quejaRepository;
         this.pagoRepository = pagoRepository;
@@ -53,6 +54,7 @@ public class HerramientasIA {
         this.accesoVehicularRepository = accesoVehicularRepository;
         this.accesoPeatonalRepository = accesoPeatonalRepository;
         this.mascotaRepository = mascotaRepository;
+        this.vehiculoRepository = vehiculoRepository;
         this.conocimientoService = conocimientoService;
         this.json = new ObjectMapper().registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -107,6 +109,14 @@ public class HerramientasIA {
                 "Consulta mascotas registradas " + alcance + ".",
                 esquema(Map.of("torre", prop("string", "Torre (solo personal)")))));
 
+        lista.add(new DefinicionHerramienta("consultar_vehiculos",
+                "Consulta vehículos registrados " + alcance + " con marca, modelo, placa, tipo y parqueadero asignado.",
+                esquema(Map.of(
+                        "placa", prop("string", "Placa o parte de ella (solo personal)"),
+                        "torre", prop("string", "Torre (solo personal)"),
+                        "sinParqueadero", prop("boolean", "true para listar solo vehículos sin parqueadero asignado")
+                ))));
+
         if (usuario.getRol() != Usuario.Rol.CELADOR) {
             lista.add(new DefinicionHerramienta("consultar_pagos",
                     "Consulta pagos de administración " + alcance + ".",
@@ -133,13 +143,17 @@ public class HerramientasIA {
     }
 
     public String ejecutar(LlamadaHerramienta llamada, Usuario usuario) {
-        Map<String, Object> a = llamada.argumentos() != null ? llamada.argumentos() : Map.of();
-        boolean permitida = disponiblesPara(usuario).stream().anyMatch(h -> h.nombre().equals(llamada.nombre()));
+        return aJson(ejecutarDatos(llamada.nombre(), llamada.argumentos(), usuario));
+    }
+
+    public Map<String, Object> ejecutarDatos(String nombre, Map<String, Object> argumentos, Usuario usuario) {
+        Map<String, Object> a = argumentos != null ? argumentos : Map.of();
+        boolean permitida = disponiblesPara(usuario).stream().anyMatch(h -> h.nombre().equals(nombre));
         if (!permitida) {
-            return aJson(Map.of("error", "Herramienta no permitida para el rol " + usuario.getRol()));
+            return Map.of("error", "Herramienta no permitida para el rol " + usuario.getRol());
         }
         try {
-            Object resultado = switch (llamada.nombre()) {
+            Object resultado = switch (nombre) {
                 case "buscar_conocimiento" -> buscarConocimiento(a);
                 case "registrar_conocimiento" -> registrarConocimiento(a, usuario);
                 case "consultar_quejas" -> consultarQuejas(a, usuario);
@@ -148,15 +162,18 @@ public class HerramientasIA {
                 case "consultar_accesos" -> consultarAccesos(a, usuario);
                 case "consultar_mascotas" -> consultarMascotas(a, usuario);
                 case "consultar_pagos" -> consultarPagos(a, usuario);
+                case "consultar_vehiculos" -> consultarVehiculos(a, usuario);
                 case "resumen_conjunto" -> metricasConjunto();
                 case "buscar_residente" -> buscarResidente(a);
                 case "residentes_en_mora" -> residentesEnMora(texto(a, "periodo"));
                 default -> Map.of("error", "Herramienta desconocida");
             };
-            return aJson(resultado);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> mapa = (Map<String, Object>) resultado;
+            return mapa;
         } catch (Exception e) {
-            log.warn("Error ejecutando herramienta {}: {}", llamada.nombre(), e.getMessage());
-            return aJson(Map.of("error", "No se pudo consultar: " + e.getMessage()));
+            log.warn("Error ejecutando herramienta {}: {}", nombre, e.getMessage());
+            return Map.of("error", "No se pudo consultar: " + Objects.toString(e.getMessage(), "error interno"));
         }
     }
 
@@ -190,7 +207,25 @@ public class HerramientasIA {
                 .filter(p -> p.getEstadoPago() == PagoAdministracion.EstadoPago.APROBADO && p.getMonto() != null)
                 .map(PagoAdministracion::getMonto).reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add));
         m.put("residentesEnMoraMes", ((List<?>) residentesEnMora(periodo).get("residentes")).size());
+        List<VehiculoResidente> vehiculos = vehiculoRepository.findAll();
+        m.put("vehiculosRegistrados", vehiculos.size());
+        m.put("vehiculosSinParqueadero", vehiculos.stream()
+                .filter(v -> v.getParqueadero() == null || v.getParqueadero().isBlank()).count());
         return m;
+    }
+
+    public Map<String, Object> resumenPagos(String periodo) {
+        String p = (periodo == null || periodo.isBlank()) ? YearMonth.now(ZONA).toString() : YearMonth.parse(periodo.trim()).toString();
+        List<PagoAdministracion> pagos = pagoRepository.findAll().stream().filter(x -> p.equals(x.getPeriodo())).toList();
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("periodo", p);
+        r.put("aprobados", pagos.stream().filter(x -> x.getEstadoPago() == PagoAdministracion.EstadoPago.APROBADO).count());
+        r.put("pendientes", pagos.stream().filter(x -> x.getEstadoPago() == PagoAdministracion.EstadoPago.PENDIENTE).count());
+        r.put("rechazados", pagos.stream().filter(x -> x.getEstadoPago() == PagoAdministracion.EstadoPago.RECHAZADO).count());
+        r.put("recaudo", pagos.stream()
+                .filter(x -> x.getEstadoPago() == PagoAdministracion.EstadoPago.APROBADO && x.getMonto() != null)
+                .map(PagoAdministracion::getMonto).reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add));
+        return r;
     }
 
     public Map<String, Object> residentesEnMora(String periodo) {
@@ -363,6 +398,33 @@ public class HerramientasIA {
                     return r;
                 }).toList();
         return Map.of("total", lista.size(), "mascotas", lista);
+    }
+
+    private Object consultarVehiculos(Map<String, Object> a, Usuario u) {
+        String placa = texto(a, "placa");
+        String torre = texto(a, "torre");
+        boolean sinParqueadero = Boolean.parseBoolean(Objects.toString(a.get("sinParqueadero"), "false"));
+        List<VehiculoResidente> base = esStaff(u) ? vehiculoRepository.findAll() : vehiculoRepository.findByUsuarioId(u.getId());
+        String placaFiltro = placa == null ? null : placa.toUpperCase().replaceAll("[^A-Z0-9]", "");
+        List<Map<String, Object>> lista = base.stream()
+                .filter(v -> placaFiltro == null || !esStaff(u) || (v.getPlaca() != null && v.getPlaca().contains(placaFiltro)))
+                .filter(v -> torre == null || !esStaff(u) || (v.getUsuario() != null && torre.equalsIgnoreCase(v.getUsuario().getTorre())))
+                .filter(v -> !sinParqueadero || v.getParqueadero() == null || v.getParqueadero().isBlank())
+                .limit(LIMITE_MAXIMO)
+                .map(v -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("placa", v.getPlaca());
+                    m.put("marca", v.getMarca());
+                    m.put("modelo", v.getModelo());
+                    m.put("color", v.getColor());
+                    m.put("tipo", v.getTipo());
+                    m.put("parqueadero", v.getParqueadero());
+                    if (esStaff(u) && v.getUsuario() != null) {
+                        m.put("propietario", residenteResumen(v.getUsuario()));
+                    }
+                    return m;
+                }).toList();
+        return Map.of("total", lista.size(), "vehiculos", lista);
     }
 
     private Object consultarPagos(Map<String, Object> a, Usuario u) {

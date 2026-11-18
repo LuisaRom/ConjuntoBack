@@ -1,5 +1,6 @@
 package com.example.APP.Service;
 
+import com.example.APP.IA.AsistenteBasicoIA;
 import com.example.APP.IA.HerramientasIA;
 import com.example.APP.IA.LlmClient;
 import com.example.APP.IA.LlmClient.MensajeLlm;
@@ -29,7 +30,7 @@ public class IaChatService {
     private static final int MAX_CARACTERES = 1500;
     private static final Set<String> HERRAMIENTAS_PERSONALES = Set.of(
             "consultar_quejas", "consultar_paqueteria", "consultar_reservas", "consultar_accesos",
-            "consultar_mascotas", "consultar_pagos", "resumen_conjunto", "buscar_residente", "residentes_en_mora");
+            "consultar_mascotas", "consultar_pagos", "consultar_vehiculos", "resumen_conjunto", "buscar_residente", "residentes_en_mora");
 
     private final LlmClient llm;
     private final HerramientasIA herramientas;
@@ -37,6 +38,7 @@ public class IaChatService {
     private final ConversacionIARepository conversacionRepository;
     private final MensajeIARepository mensajeRepository;
     private final UsuarioRepository usuarioRepository;
+    private final AsistenteBasicoIA asistenteBasico;
     private final Map<Long, Deque<Instant>> usoPorUsuario = new ConcurrentHashMap<>();
 
     @Value("${ia.nombre-asistente:Asistente del Conjunto}")
@@ -50,13 +52,14 @@ public class IaChatService {
 
     public IaChatService(LlmClient llm, HerramientasIA herramientas, ConocimientoIAService conocimientoService,
                          ConversacionIARepository conversacionRepository, MensajeIARepository mensajeRepository,
-                         UsuarioRepository usuarioRepository) {
+                         UsuarioRepository usuarioRepository, AsistenteBasicoIA asistenteBasico) {
         this.llm = llm;
         this.herramientas = herramientas;
         this.conocimientoService = conocimientoService;
         this.conversacionRepository = conversacionRepository;
         this.mensajeRepository = mensajeRepository;
         this.usuarioRepository = usuarioRepository;
+        this.asistenteBasico = asistenteBasico;
     }
 
     public Map<String, Object> chat(String username, Long conversacionId, String texto) {
@@ -84,7 +87,9 @@ public class IaChatService {
         List<String> usadas = new ArrayList<>();
 
         if (!llm.disponible()) {
-            respuesta = respuestaSinIA(relevantes);
+            LlmClient.ResultadoLlm basico = asistenteBasico.responder(usuario, mensaje, relevantes);
+            respuesta = basico.texto();
+            usadas = new ArrayList<>(basico.herramientasUsadas());
         } else {
             try {
                 List<MensajeLlm> historial = construirHistorial(previos, mensaje);
@@ -95,7 +100,9 @@ public class IaChatService {
                 usadas = resultado.herramientasUsadas();
             } catch (Exception e) {
                 log.error("Error consultando el proveedor de IA: {}", e.getMessage());
-                respuesta = "El asistente inteligente no está disponible en este momento. " + respuestaSinIA(relevantes);
+                LlmClient.ResultadoLlm basico = asistenteBasico.responder(usuario, mensaje, relevantes);
+                respuesta = basico.texto();
+                usadas = new ArrayList<>(basico.herramientasUsadas());
             }
         }
         if (!relevantes.isEmpty()) {
@@ -207,7 +214,10 @@ public class IaChatService {
         sb.append("\nFecha y hora actual (Colombia): ").append(ahora).append("\n\n");
         sb.append("""
                 Reglas:
-                - Responde siempre en español, de forma breve, clara y amable. Usa listas cortas solo si ayudan.
+                - Responde siempre en español natural, cercano y claro, como lo haría un buen administrador. Usa listas cortas solo si ayudan.
+                - No te limites a repetir datos: analízalos. Da el total, compara (porcentajes, qué torre o categoría concentra más casos, qué lleva más tiempo pendiente), señala lo urgente y termina con una recomendación concreta cuando aplique.
+                - Entiende expresiones coloquiales y fechas relativas (hoy, mañana, este fin de semana, el mes pasado) y conviértelas a fechas reales antes de consultar.
+                - Si la pregunta es ambigua, usa la interpretación más útil para el rol del usuario y menciónala en una frase.
                 - Para cualquier dato del conjunto (quejas, pagos, paquetes, reservas, accesos, mascotas, residentes) usa las herramientas; nunca inventes cifras, nombres ni fechas.
                 - Para normas, horarios, tarifas o procedimientos consulta primero buscar_conocimiento. Si no hay información, dilo con honestidad y sugiere contactar a la administración.
                 - Las herramientas ya limitan la información según el rol. No intentes obtener datos de otros residentes para un residente.
@@ -218,7 +228,7 @@ public class IaChatService {
         if (u.getRol() == Usuario.Rol.ADMINISTRADOR) {
             sb.append("- Con la administración puedes analizar indicadores, detectar problemas recurrentes, priorizar quejas y proponer acciones concretas.\n");
         } else if (u.getRol() == Usuario.Rol.CELADOR) {
-            sb.append("- Con el celador prioriza información operativa: paquetes pendientes, accesos del día, reservas y quejas abiertas.\n");
+            sb.append("- Con el celador prioriza información operativa: paquetes pendientes, accesos del día, placas de vehículos, reservas y quejas abiertas.\n");
         }
         if (!relevantes.isEmpty()) {
             sb.append("\nConocimiento del conjunto relacionado con la pregunta:\n");
@@ -251,14 +261,6 @@ public class IaChatService {
         } else {
             lista.add(new MensajeLlm(rol, contenido));
         }
-    }
-
-    private String respuestaSinIA(List<ConocimientoIA> relevantes) {
-        if (relevantes.isEmpty()) {
-            return "No encontré información sobre eso. Puedes consultar con la administración del conjunto.";
-        }
-        ConocimientoIA mejor = relevantes.get(0);
-        return mejor.getTitulo() + ": " + mejor.getContenido();
     }
 
     private boolean usoDatosPersonales(MensajeIA respuesta) {
