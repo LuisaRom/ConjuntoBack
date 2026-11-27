@@ -223,7 +223,8 @@ public class IaChatService {
                 - Las herramientas ya limitan la información según el rol. No intentes obtener datos de otros residentes para un residente.
                 - No realizas acciones como crear reservas, pagos o quejas: explica en qué sección de la app se hacen.
                 - Cuando el usuario te enseñe una norma, horario, tarifa o procedimiento GENERAL del conjunto, guárdalo con registrar_conocimiento. Nunca guardes datos personales.
-                - Si te piden algo fuera del ámbito del conjunto, responde brevemente y vuelve al tema de la convivencia y la gestión.
+                - Eres de uso exclusivo para asuntos del conjunto residencial. Si la pregunta no tiene relación con el conjunto, no la respondas: indica con amabilidad que solo puedes ayudar con temas del conjunto y sugiere ejemplos de lo que sí puedes hacer.
+                - Respeta la Ley 1581 de 2012: no reveles datos personales a quien no le corresponden según su rol, no solicites datos sensibles y no los guardes como conocimiento.
                 """);
         if (u.getRol() == Usuario.Rol.ADMINISTRADOR) {
             sb.append("- Con la administración puedes analizar indicadores, detectar problemas recurrentes, priorizar quejas y proponer acciones concretas.\n");
