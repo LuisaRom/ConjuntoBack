@@ -4,6 +4,7 @@ import com.example.APP.Model.Usuario;
 import com.example.APP.Repository.UsuarioRepository;
 import com.example.APP.Service.UsuarioService;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -14,9 +15,11 @@ import java.util.Optional;
 public class UsuarioServiceImpl implements UsuarioService {
 
     private final UsuarioRepository usuarioRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public UsuarioServiceImpl(UsuarioRepository usuarioRepository) {
+    public UsuarioServiceImpl(UsuarioRepository usuarioRepository, PasswordEncoder passwordEncoder) {
         this.usuarioRepository = usuarioRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
@@ -45,7 +48,7 @@ public class UsuarioServiceImpl implements UsuarioService {
         if (usuario.getRol() == Usuario.Rol.RESIDENTE) {
             validarDatosMinimosResidente(usuario.getUsuario(), usuario.getTorre(), usuario.getApartamento());
         }
-        usuario.setPassword(usuario.getPassword().trim());
+        usuario.setPassword(cifrar(usuario.getPassword()));
         return usuarioRepository.save(usuario);
     }
     
@@ -91,7 +94,7 @@ public class UsuarioServiceImpl implements UsuarioService {
         nuevoUsuario.setRol(rol);
         nuevoUsuario.setApartamento(apartamento != null ? apartamento.trim() : "");
         nuevoUsuario.setTorre(torre != null ? torre.trim() : "");
-        nuevoUsuario.setPassword(password.trim());
+        nuevoUsuario.setPassword(cifrar(password));
 
         return usuarioRepository.save(nuevoUsuario);
     }
@@ -103,7 +106,7 @@ public class UsuarioServiceImpl implements UsuarioService {
         }
         Usuario usuario = usuarioRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
-        usuario.setPassword(nuevaPassword.trim());
+        usuario.setPassword(cifrar(nuevaPassword));
         return usuarioRepository.save(usuario);
     }
 
@@ -117,7 +120,7 @@ public class UsuarioServiceImpl implements UsuarioService {
         }
         Usuario usuarioExistente = usuarioRepository.findByUsuario(usuario.trim())
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
-        usuarioExistente.setPassword(nuevaPassword.trim());
+        usuarioExistente.setPassword(cifrar(nuevaPassword));
         return usuarioRepository.save(usuarioExistente);
     }
 
@@ -137,11 +140,26 @@ public class UsuarioServiceImpl implements UsuarioService {
             throw new BadCredentialsException("Usuario o contraseña incorrectos");
         }
 
+        if (esHashBcrypt(storedPassword)) {
+            if (!passwordEncoder.matches(password, storedPassword)) {
+                throw new BadCredentialsException("Usuario o contraseña incorrectos");
+            }
+            return user;
+        }
+
         if (!storedPassword.equals(password)) {
             throw new BadCredentialsException("Usuario o contraseña incorrectos");
         }
+        user.setPassword(cifrar(password));
+        return usuarioRepository.save(user);
+    }
 
-        return user;
+    private String cifrar(String password) {
+        return passwordEncoder.encode(password.trim());
+    }
+
+    private boolean esHashBcrypt(String valor) {
+        return valor.startsWith("$2a$") || valor.startsWith("$2b$") || valor.startsWith("$2y$");
     }
 
     @Override
