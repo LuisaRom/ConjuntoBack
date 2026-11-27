@@ -1,0 +1,4 @@
+-d
+/tmp/chk
+-proc:none
+src/main/java/com/example/APP/Service/ServiceImpl/UsuarioServiceImpl.java
